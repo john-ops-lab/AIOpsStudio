@@ -1,0 +1,23 @@
+.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+private/
+*.log
+.DS_Store
+.coverage
+*.sqlite*
+*.tsbuildinfo
+# Runtime data and local credentials never belong in the public repository.
+/evidence/
+/artifacts/
+*.key
+*.pem
+*.pid
+*.blob
+secrets.local.json
+source-bootstrap.json

@@ -1,0 +1,126 @@
+{
+  "schema": "easyops-public-validation-summary/v2",
+  "date": "2026-10-22",
+  "timezone": "Asia/Shanghai",
+  "application_and_validation_host": "Mac",
+  "database": "PostgreSQL",
+  "backend_tests": {
+    "passed": 84
+  },
+  "frontend_build": "passed",
+  "node_proxy_boundary": "passed",
+  "postgres_http": {
+    "checks_passed": 16,
+    "live_model": false,
+    "checks": {
+      "postgresql_runtime": true,
+      "conversation_user_scoped_idempotency": true,
+      "conversation_list_isolation": true,
+      "conversation_cross_user_404": true,
+      "admin_private_history_404": true,
+      "operator_configuration_rejected": true,
+      "operator_test_purpose_rejected": true,
+      "attachment_exact_bytes": true,
+      "attachment_download_disposition": true,
+      "attachment_cross_user_404": true,
+      "attachment_metadata_no_path": true,
+      "invalid_upload_rejected": true,
+      "failed_upload_no_metadata": true,
+      "missing_context_saved_not_executed": true,
+      "relogin_attachment_restored": true,
+      "logout_old_session_rejected": true
+    }
+  },
+  "chat_ui_and_persistence": {
+    "original_assertions_passed": 19,
+    "checks": {
+      "first_model_generated": true,
+      "first_report_saved": true,
+      "browser_reload_no_duplicate": true,
+      "two_rounds_saved": true,
+      "both_reports_model_generated": true,
+      "followup_parent_preserved": true,
+      "first_report_unchanged": true,
+      "owner_retention": true,
+      "two_assistant_receipts": true,
+      "user_consumption_truth": true,
+      "two_report_files": true,
+      "terminal_duplicate_no_dispatch": true,
+      "public_projection_no_internal_materials": true,
+      "relogin_same_messages_rounds_files": true,
+      "attachment_download_hashes_match": true,
+      "generated_report_bodies_match_saved_round": true
+    }
+  },
+  "real_model_rounds": {
+    "provider": "external_provider_anonymized",
+    "count": 2,
+    "status": [
+      "partial",
+      "partial"
+    ],
+    "source": [
+      "model",
+      "model"
+    ],
+    "model_generated": [
+      true,
+      true
+    ]
+  },
+  "browser": {
+    "provider": "Chrome extension",
+    "desktop": [
+      1680,
+      820
+    ],
+    "mobile": [
+      390,
+      844
+    ],
+    "page_horizontal_overflow": false,
+    "composer_visible": true,
+    "mobile_initial_dialogs": 0,
+    "evidence_same_id_and_keyboard_focus": "passed",
+    "mobile_canvas_escape_restores_trigger": "passed",
+    "console_error_warn": [],
+    "navigation_regression": [
+      "alerts_to_chat_prefill",
+      "skill_draft_form_no_submission",
+      "mcp_schema_and_trial_form_no_submission",
+      "account_management"
+    ]
+  },
+  "first_live_attempt": {
+    "passed": false,
+    "reason": "model timeout and report generation failure",
+    "report_source": "platform_template",
+    "original_oracle_corrected": true
+  },
+  "secrets": {
+    "historical_known_credential_scan": "no_matches_reported",
+    "values_included": false,
+    "scope": "Known credentials only; current publication and history sanitization are tracked separately."
+  },
+  "user_acceptance": "pending_user_feedback",
+  "excluded": [
+    "credentials",
+    "passwords",
+    "model_api_keys",
+    "raw_conversations",
+    "user_attachments",
+    "database",
+    "raw_runtime_evidence",
+    "runtime_logs",
+    "live_environment_identifiers",
+    "original_runtime_ids",
+    "receipt_and_report_hashes",
+    "original_commit_identifiers",
+    "private_material_indexes",
+    "original_to_alias_mapping"
+  ],
+  "scope": "Historical Mac acceptance summary; not original online evidence, current-commit validation, GitHub CI, or full business impact/root cause acceptance.",
+  "document_kind": "deidentified_historical_projection",
+  "original_online_evidence_included": false,
+  "illustrations": "new_generic_demonstrations_not_acceptance_screenshots"
+}

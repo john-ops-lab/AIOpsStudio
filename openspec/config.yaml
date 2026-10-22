@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  Language: zh-CN
+  All artifacts must be written in zh-CN.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  EasyOps uses React/Vite, FastAPI/Deep Agents and PostgreSQL. Product language is zh-CN.
+  Follow proposal -> delta specs/design -> tasks -> apply -> verify for all subsequent development.
+  The user authorized the Chat implementation, public repository initialization, and sanitize-public-history including an independent public checkout and rewritten public history.
+  All application development, runtime and validation target the Mac; external systems are read-only sources configured outside the repository.
+  Preserve the existing private runtime. The current authorized publication cleanup does not include tags or Releases; other external actions follow the user instruction. Prefer MiniMax for future model validation, supplied through external configuration.
+  User histories, runs, messages, evidence and attachments must be isolated by authenticated server-side owner.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
