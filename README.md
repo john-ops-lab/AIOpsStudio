@@ -111,7 +111,7 @@ openspec validate --all --strict
 
 [历史公开摘要](docs/validation/2026-10-22.md)记录 84 项后端测试、16 项 HTTP 检查和 19 项 Chat 联核的历史结果，以及首次失败和 `partial` 边界；它不是当前提交、任意新环境或新模型的验收。原始收据、对话、附件、证据与日志不在仓库内。公开摘要不保留运行 ID、收据哈希或原环境映射。
 
-后续开发遵循 [AGENTS.md](AGENTS.md) 与 OpenSpec；当前行为在 `openspec/specs/`，变更在 `openspec/changes/`，勾选任务不能替代验收。公共历史清理见 [sanitize-public-history](openspec/changes/sanitize-public-history/proposal.md)。
+后续开发遵循 [AGENTS.md](AGENTS.md) 与 OpenSpec；当前行为在 `openspec/specs/`，变更在 `openspec/changes/`，勾选任务不能替代验收。公共历史清理见 [sanitize-public-history](openspec/changes/sanitize-public-history/proposal.md) 与[验证及残留状态](openspec/changes/sanitize-public-history/verification.md)。
 
 ## 备份与目录
 
