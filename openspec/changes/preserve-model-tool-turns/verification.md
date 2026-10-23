@@ -4,7 +4,7 @@
 
 - 原真实 MiniMax 端到端首轮保留失败：四轮重复源读取；第五轮禁工具报告约 55 秒中断并生成 `platform_template`，不能算完整端到端通过。该次运行不重写，完整状态见 [PR 15 审查与升级验证](../../../docs/validation/2026-10-23-pr15-review-upgrade.md)。
 - 本次独立审查先复现两项旧实现缺陷：列表文本块中的 `<think>` 内容进入可见文本；实际 SDK 请求已派发后取消，`token_usage_known` 仍为 true。派发前取消保持零已知用量的对照通过。
-- 本次开发仅使用 Mac 隔离测试数据库、真实 LangChain/DeepAgents/ChatOpenAI SDK 和 `httpx.MockTransport`；没有调用真实模型或业务源，没有修改真实配置、历史、附件、评估冻结材料或 oracle。
+- 本次实现阶段仅使用 Mac 隔离测试数据库、真实 LangChain/DeepAgents/ChatOpenAI SDK 和 `httpx.MockTransport`；没有调用真实模型或业务源，没有修改真实配置、历史、附件、评估冻结材料或 oracle。
 
 ## 定向结果
 
@@ -37,4 +37,4 @@ OpenSpec 全量严格检查首轮由主集成记录为 27 项通过、1 项失�
 
 ## 独立复核与未完成边界
 
-独立安全审查已复核字段准入、凭据、最新策略竞态、attempt 隔离和中间持久状态；独立 9 项检查通过。主集成对最终冻结代码完成全套 **481 passed / 18 subtests passed**，OpenSpec 严格检查 **28 passed / 0 failed**。发布和真实 MiniMax 后续尝试由主集成记录；真实复验须使用单独记录的新测试策略版本显式准入 reasoning_content，不修改首败材料或公开冻结评估集。当前合成结果不代表真实模型、业务源或用户接受已经通过。
+独立安全审查已复核字段准入、凭据、最新策略竞态、attempt 隔离和中间持久状态；独立 9 项检查通过。主集成对最终冻结代码完成全套 **481 passed / 18 subtests passed**，OpenSpec 严格检查 **28 passed / 0 failed**。PR #16 已合并并只更新 Mac API，原配置、数据库行、历史和制品逐项保持。真实 MiniMax-M3 第二轮使用预先登记的独立新测试策略显式准入 reasoning_content，源材料/模型/Skill/预算保持；18项API/PG/oracle断言与Chrome检查通过，3次模型HTTP完整返回、1次真实MCP固定源读取、1/1结构化claim核对通过。两次模型自主补读因参数错误被拒绝，精确片段由后续QA操作核验，不能声称自主补读成功。报告为partial并保留单来源、未确认根因和自然语言解释未核验的边界。完整首败、发布、升级与真实结果见[PR 15审查与升级验证](../../../docs/validation/2026-10-23-pr15-review-upgrade.md)。此结果不代表真实业务源、完整根因或用户接受已经通过。

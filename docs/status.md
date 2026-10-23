@@ -6,7 +6,9 @@
 
 R01–R04、R07 已经[PR #15](https://github.com/john-ops-lab/AIOpsStudio/pull/15)审查修复并合并，合并提交 `0c4b9094419a1d0162abccc5779a97dfacfd561d`。最终459项回归与18项subtest、前端构建、26项OpenSpec严格校验通过；固定回放102断言通过、0失败、3未知，无已通过项退化。PR及合并后main的公开安全CI分别通过。
 
-Mac原API/Web已更新；原数据库行、配置/密钥与制品内容逐项保持。旧会话/报告以owner只读档案保留，原附件下载校验通过；继续分析需要新建会话并显式补齐身份、查询及source/egress契约。真实MiniMax完整链路在独立Mac验收实例运行，固定只读MCP测试源与原业务源分开。结果及清理状态见[审查与升级验证](validation/2026-10-23-pr15-review-upgrade.md)，初次实现首败保留在[M1原验证](validation/2026-10-23-m1.md)。完整业务及用户接受未宣称通过；R05/R06/R08–R13继续待开发。
+Mac原API/Web已更新；原数据库行、配置/密钥与制品内容逐项保持，原账号历史和附件实际读取核验通过。旧会话/报告以owner只读档案保留；继续分析需要新建会话并显式补齐身份、查询及source/egress契约。
+
+真实MiniMax首轮暴露上下文连续性与报告超时问题，另经[PR #16](https://github.com/john-ops-lab/AIOpsStudio/pull/16)修复合并，仅更新Mac API。补修完整回归481项及18项subtest、28项OpenSpec严格校验通过；冻结回放仍102/0/3。第二轮MiniMax-M3完成3次真实模型请求、1次真实只读MCP源读取，产生模型报告和1条已核对结构化事实；终态partial保留单来源、未确认根因等边界。此为隔离Mac与固定测试源的端到端核验，原业务源未调用。过程、首败和收尾状态见[审查与升级验证](validation/2026-10-23-pr15-review-upgrade.md)，初次M1实现记录保留在[M1原验证](validation/2026-10-23-m1.md)。完整业务及用户接受未宣称通过；R05/R06/R08–R13继续待开发。
 
 ## 已实现能力
 
