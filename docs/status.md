@@ -48,3 +48,7 @@
 本机应用面向 Mac，部署入口已将状态目录、端口、数据库、可选 SSH 转发与数据源引导外置，通用用法见 [README](../README.md)。仓库不包含原运行实例、私有配置、用户历史、原始证据、模型端点或凭据。现有实例不因公开副本整理而迁移、重启或清空。
 
 公开图片是完全新制的通用演示素材，不是实际截图或数据替换表。早期发布与当前历史清理分别由 [publish-public-repository](../openspec/changes/publish-public-repository/proposal.md) 和 [sanitize-public-history](../openspec/changes/sanitize-public-history/proposal.md) 跟踪。历史验收计数保持原义；本次配置改动的验证另记于当前变更，不把旧结果冒充当前提交的通过证据。
+
+## 后续规划修订
+
+2026-10-23 将研究缺口并入原有 R01–R13，R07 源权限与模型数据出站前移 M1；后续契约见[增量设计](design/可信分析与协作增量设计-v0.1.md)和[路线图](design/development-roadmap.md)。本次只修订规划与设计，未改变当前应用主规格或运行能力，十三项仍待实施及业务验收。
