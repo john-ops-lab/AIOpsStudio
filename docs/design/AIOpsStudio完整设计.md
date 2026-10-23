@@ -69,7 +69,7 @@ AIOpsStudio 是面向已有监控和 CMDB 的、中文优先、可自主部署�
 
 ### 2.3 M1 本分支实现与现有实例的区别
 
-M1 由 `establish-analysis-baseline`、`unify-analysis-context`、`add-targeted-evidence-reading`、`ground-alert-impact-reports` 和 `enforce-source-access-scope` 五个 OpenSpec 共同交付。代码在独立 Mac 开发副本与隔离数据库验证；现有 API/Web、配置、独立密钥、历史、附件和源连接不因此切换。
+M1 由 `establish-analysis-baseline`、`unify-analysis-context`、`add-targeted-evidence-reading`、`ground-alert-impact-reports` 和 `enforce-source-access-scope` 五个 OpenSpec 共同交付，见[PR #15](https://github.com/john-ops-lab/AIOpsStudio/pull/15)；总路线图及相关实施 Issue 已同步代码和验收状态。代码在独立 Mac 开发副本与隔离数据库验证；现有 API/Web、配置、独立密钥、历史、附件和源连接不因此切换。
 
 新工作空间必须配置版本化身份映射、查询目录、source/egress 策略。缺映射先补输入；缺策略默认拒绝，不把旧平台账号权限授予全部用户。配置管理页提供 JSON 编辑和版本校验，具体字段/API 见 [协作合同](../../CONTRACT.md#当前增量m1-可信分析与数据边界)。
 
