@@ -34,7 +34,11 @@
 
 - 仓库原位更名为 `john-ops-lab/AIOpsStudio`，repository ID 不变，public/MIT/main 保持；本机公开目录和 origin 同步新名。
 - 现有 14 项 Issue 全部读回核对：标题/正文与已扫描草稿一致，编号、ID、状态、labels、assignees、milestone 和评论数量保持；全部加入完整设计入口，旧品牌正文命中为 0。没有 PR 或 Discussion 需要迁移。
-- 当前完整暂存树已通过现有通用规则、Gitleaks 与只读私有 profile 的 88 项材料比对，无命中；保留钩子。69 份 Markdown 的 134 条相对引用全部有效，当前跟踪文件名中无旧品牌。推送仍按实际提交完整祖先执行检查，准确 SHA 的远端树与 CI 在发布后核对并补记。
+- 当前完整暂存树已通过现有通用规则、Gitleaks 与只读私有 profile 的 88 项材料比对，无命中；保留钩子。69 份 Markdown 的 137 条相对引用全部有效，当前跟踪文件名中无旧品牌。推送仍按实际提交完整祖先执行检查，实际推送钩子对包含实现提交在内的 13 个提交、431 个对象执行完整历史检查及同一私有比对，无命中。
+
+- 实现提交 [4825c94](https://github.com/john-ops-lab/AIOpsStudio/commit/4825c9461d96eee8b77c3bae4876bbd206501c3f) 已正常推送到 main。远端分支 SHA 和完整 Git tree 与本机一致，完整设计正文逐字节一致。
+- 该准确 SHA 的 [Publication security CI](https://github.com/john-ops-lab/AIOpsStudio/actions/runs/39931807282) 已成功；完整公开历史和 34 项合成回归通过。保留上游 runner/Node action 迁移提醒，不作为应用业务验收。
+- 本验证与 tasks 在以上发布和 CI 后补记；记录提交按自己的 SHA 核对远端与[安全工作流](https://github.com/john-ops-lab/AIOpsStudio/actions/workflows/publication-security.yml)，不复用前一提交 CI。
 
 ## 本机运行入口
 
