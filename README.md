@@ -96,6 +96,21 @@ HTTP 成功、工具成功、模型报告、业务覆盖与用户接受分别记
 
 ## 验证与开发
 
+开始开发前安装当前副本的[提交与推送安全门禁](security/README.md)：
+
+```sh
+brew install gitleaks
+python3 scripts/install_security_hooks.py
+```
+
+需要 Gitleaks 8.30.1 或兼容的 8.x 版本。安装后，`git commit` 自动检查实际暂存树，`git push` 自动检查各目标分支/标签的全部历史；命中密钥、本机配置、现场地址、未复核图片或检查失败都会阻断。新 clone 需重新安装钩子。仓库外私有 profile 可补充实际凭据和现场标识的只读比对；CI 执行通用规则复核。独立全历史检查：
+
+```sh
+python3 scripts/security_scan.py history
+python3 -m unittest discover -s tests -p test_publication_security.py -v
+```
+
+
 ```sh
 cd backend
 uv run pytest -q

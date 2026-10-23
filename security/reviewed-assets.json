@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "review": "2026-10-23: 通用图片已完成目视/OCR、CRC、必要块及无尾随数据检查；仅允许以下路径和精确字节。更新必须重新复核，不可自动生成放行记录。",
+  "png": {
+    "design/workbench-concept.png": "65cb3af9a5b9b02308d698c5ab32f4566042bc0b608ac0b021f6b977b36e49de",
+    "docs/design/assets/20261022-Chat工作台Demo-v0.1.png": "65cb3af9a5b9b02308d698c5ab32f4566042bc0b608ac0b021f6b977b36e49de",
+    "docs/design/assets/architecture-v1/EasyOps-AI运维平台架构-v1.png": "3348c98aa38e9b21f14586c716077d9bae5d3383e19d9c17d60ee9b10a92fe47"
+  }
+}

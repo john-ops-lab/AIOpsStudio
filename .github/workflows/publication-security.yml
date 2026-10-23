@@ -1,0 +1,24 @@
+name: Publication security
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sensitive-information:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned scanner from official Go module
+        run: |
+          go install -ldflags="-X github.com/zricethezav/gitleaks/v8/version.Version=8.30.1" github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Complete public Git history
+        run: python3 scripts/security_scan.py history
+      - name: Synthetic Git regression
+        run: python3 -m unittest discover -s tests -p test_publication_security.py -v
