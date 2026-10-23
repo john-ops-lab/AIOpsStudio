@@ -16,6 +16,7 @@ import time
 import uuid
 from decimal import Decimal, InvalidOperation
 from contextlib import AsyncExitStack
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from jsonschema import Draft202012Validator
+from openai import APITimeoutError
 
 from . import connectors
 from .compat import environment
@@ -32,6 +34,8 @@ from .access_policy import PolicyError, policy_digest
 from .analysis_context import ContextError, freeze_context, legacy_context
 from .material_reading import ReadingError, logical_document
 from .grounded_reporting import ground_report
+from .model_protocol import (ACTIVE_TOOL_TURN_POLICY, AttemptToolTurns, CompatibleChatOpenAI,
+                             ToolTurnError, protocol_bytes)
 
 TERMINAL = {"succeeded", "partial", "failed", "needs_input", "cancelled"}
 DEFAULT_BUDGET = {"wall_seconds": 300, "tool_calls": 40, "source_requests": 40,
@@ -67,8 +71,8 @@ def visible_text(content) -> str:
         content = re.sub(r"<think\b[^>]*>.*?(?:</think\s*>|$)", "", content, flags=re.S | re.I)
         return content.strip()
     if isinstance(content, list):
-        return "\n".join(str(block.get("text", "")) for block in content
-                         if isinstance(block, dict) and block.get("type") in {"text", "output_text"})
+        return visible_text("\n".join(str(block.get("text", "")) for block in content
+                            if isinstance(block, dict) and block.get("type") in {"text", "output_text"}))
     return ""
 
 
@@ -956,11 +960,12 @@ class Runtime(TrustBoundary):
                 "mode": "final_report_no_tools" if report else "bounded_investigation",
                 "remaining_tokens": max(0, run["budget"]["max_tokens"] - run["usage"]["input_tokens"] - run["usage"]["output_tokens"])}
 
-    def _plan_model_round(self, run, request):
+    def _plan_model_round(self, run, request, *, retained_protocol_bytes=0):
         plan = run.get("execution_plan") or {"max_exploration_rounds": 4, "report_token_reserve": 16000, "report_wall_seconds": 45}
         used = run["usage"]["input_tokens"] + run["usage"]["output_tokens"]
         remaining = run["budget"]["max_tokens"] - used
         prompt_bytes = len(json.dumps(self._investigation_context(run), ensure_ascii=False, default=str).encode())
+        prompt_bytes += retained_protocol_bytes
         system = getattr(request, "system_message", None)
         prompt_bytes += len(str(getattr(system, "content", "")).encode())
         for tool in request.tools:
@@ -971,7 +976,8 @@ class Runtime(TrustBoundary):
         output_cap = min(int(run["config_snapshot"]["model"].get("max_tokens", 4096)), 8192)
         wall_left = (parse_time(run["deadline_at"]) - datetime.now(timezone.utc)).total_seconds()
         check = {"estimated_next_input_tokens": estimated_input, "estimate_basis": "UTF8字节×0.45与上轮实际输入×1.1较大值；估计值，不是供应商计量",
-                 "remaining_tokens": remaining, "report_token_reserve": plan["report_token_reserve"], "wall_seconds_left": round(wall_left, 2)}
+                 "remaining_tokens": remaining, "retained_protocol_bytes": retained_protocol_bytes,
+                 "report_token_reserve": plan["report_token_reserve"], "wall_seconds_left": round(wall_left, 2)}
         if run.get("exploration_rounds", 0) >= plan["max_exploration_rounds"]:
             return check, "已达到固定探索回合上限，停止取证并生成有边界报告"
         if run["usage"]["model_call_count"] >= run["budget"]["model_calls"] - 1:
@@ -1020,6 +1026,25 @@ class Runtime(TrustBoundary):
                 limitations.append({"evidence_id": record["id"], "tool_name": record["tool_name"], "completeness": "unknown", "reasons": ["saved_evidence_unreadable"]})
         return limitations
 
+    def _model_evidence_result(self, run_id, record):
+        """Use the registered source type before a tool body reaches the graph.
+
+        A bounded reading view is still native material, not an egress view.
+        Reuse the ledger schema so aliases, drops and unknown-field denial are
+        identical for the first tool reply and subsequent context rebuilding.
+        """
+        current = self.store.get("run", run_id)
+        self.policies.authorize_material(record, subject_id=resource_owner(current), snapshot=current.get("policy_snapshot"))
+        ledger = self._evidence_ledger({**current, "evidence": [record]}, limit=16 * 1024)
+        projected = self._typed(current, "source_evidence", ledger)
+        self.policies.authorize_material(record, subject_id=resource_owner(current), snapshot=current.get("policy_snapshot"))
+        entries = projected.get("evidence", [])
+        if len(entries) != 1 or entries[0].get("evidence_id") != record["id"]:
+            # Never backfill an identifier or any other field from native data
+            # after projection. Without a stable evidence reference, stop.
+            raise PolicyError("policy_egress_evidence_reference")
+        return entries[0]
+
     async def _invoke_source(self, run_id, source, tool_name, arguments, fn, source_requests=0, query_binding=None):
         source_scope = self._source_scope(self.store.get("run", run_id), source, tool_name, arguments)
         self._count(run_id, "tool", source_requests)
@@ -1048,7 +1073,7 @@ class Runtime(TrustBoundary):
                 record["model_view"] = reading["reading_view"]
                 self.store.save("evidence", record["id"], record)
                 self._update(run_id, callback=lambda r: [e.update(model_view=record["model_view"]) for e in r["evidence"] if e["id"] == record["id"]])
-                return reading
+                return self._model_evidence_result(run_id, record)
             return {"evidence_id": record["id"], "isError": bool(response.get("isError")), "response": data,
                     "completeness": "partial" if record["truncated"] else "native_response_saved"}
         except asyncio.CancelledError:
@@ -1062,6 +1087,8 @@ class Runtime(TrustBoundary):
             # Persist errors through the identical evidence pipeline before model sees them.
             record, data = accept({"isError": True, "error": invocation["error"]})
             invocation["evidence_id"] = record["id"]
+            if self.store.get("run", run_id)["purpose"] in {"investigation", "skill_test"}:
+                return self._model_evidence_result(run_id, record)
             return {"evidence_id": record["id"], "isError": True, "response": data}
         finally:
             invocation.update(elapsed_seconds=round(time.monotonic() - started, 3), completed_at=now())
@@ -1248,16 +1275,28 @@ class Runtime(TrustBoundary):
         if wall_left < 3:
             raise ExecutionStop("报告时间预算不足，使用平台事实模板", "report_reserve_insufficient")
         # Original model, no bound tools; neither another agent nor another queue.
-        final_model = model.bind(max_tokens=output_limit) if hasattr(model, "bind") else model
-        async with asyncio.timeout(max(1, min(wall_left - 1, 55))):
+        report_timeout = min(wall_left - 1, 180)
+        # OpenAI's per-request timeout overrides the model's exploration default
+        # and is an SDK transport option, never a JSON model parameter.
+        final_model = model.bind(max_tokens=output_limit, timeout=report_timeout) if hasattr(model, "bind") else model
+        async with asyncio.timeout(report_timeout):
             result = await self._invoke_model(run_id, lambda: final_model.ainvoke(messages), phase="report")
         if getattr(result, "tool_calls", None) or not visible_text(result.content).strip():
             raise ExecutionStop("禁工具报告回合未返回可展示正文，使用平台事实模板", "report_missing")
         self._update(run_id, callback=lambda r: [m.update(status="processed", processed_at=now()) for m in r["messages"] if m["id"] in pending_ids])
         return result
 
+    async def _model_http_guard(self, request):
+        bound = ACTIVE_TOOL_TURN_POLICY.get()
+        if bound:
+            active = ACTIVE_MODEL.get()
+            run = self.store.get("run", bound[0])
+            if (not active or active != (self, bound[0]) or not run or run["attempt_id"] != bound[1]
+                    or policy_digest(self.policies.snapshot()) != bound[2]):
+                raise PolicyError("policy_egress_stale_tool_protocol")
+        await super()._model_http_guard(request)
+
     def _model(self, config, *, sample=False, run_id=None):
-        from langchain_openai import ChatOpenAI
         if config.get("provider", "openai") not in {"openai", "openai-compatible", "openai_compatible", "kimi", "moonshot"}:
             raise ExecutionStop("当前运行器只支持已配置的 OpenAI 兼容模型，未切换模型", "provider_unsupported")
         if not config.get("model") or not config.get("secret_id"):
@@ -1271,14 +1310,14 @@ class Runtime(TrustBoundary):
         self._model_clients.setdefault(run_id, []).append(client)
         kwargs = {"http_async_client": client, "model": config["model"], "api_key": self.vault.get(config["secret_id"]), "base_url": config.get("base_url"),
                   "max_tokens": min(int(config.get("max_tokens", 4096)), 4096 if sample else 8192),
-                  "timeout": 55 if sample else 60, "max_retries": 0, "use_responses_api": False}
+                  "timeout": 55 if sample else 180, "max_retries": 0, "use_responses_api": False}
         if config.get("temperature") is not None:
             kwargs["temperature"] = config["temperature"]
         if config.get("extra_body"):
             kwargs["extra_body"] = copy.deepcopy(config["extra_body"])
         if config.get("default_headers"):
             kwargs["default_headers"] = copy.deepcopy(config["default_headers"])
-        return ChatOpenAI(**kwargs)
+        return CompatibleChatOpenAI(**kwargs)
 
     def _usage(self, run_id, message):
         metadata = getattr(message, "usage_metadata", None)
@@ -1303,6 +1342,7 @@ class Runtime(TrustBoundary):
         self.store.save("invocation", invocation["id"], invocation)
         self._event(run_id, "model_started", {"invocation_id": invocation["id"], "model": model["model"], "sample_round": sample_round})
         started = time.monotonic()
+        dispatched_before = run["usage"].get("model_http_request_count", 0)
         dispatch_token = ACTIVE_MODEL.set((self, run_id))
         try:
             response = await invoke()
@@ -1316,6 +1356,8 @@ class Runtime(TrustBoundary):
             invocation.update(status="succeeded", result=summaries)
             return response
         except asyncio.CancelledError:
+            if self.store.get("run", run_id)["usage"].get("model_http_request_count", 0) > dispatched_before:
+                self._update(run_id, callback=lambda r: r["usage"].update(token_usage_known=False))
             invocation.update(status="cancelled", error={"code": "interrupted", "message": "模型调用已中断，实际已消耗用量可能未知"})
             raise
         except Exception as error:
@@ -1452,11 +1494,20 @@ class Runtime(TrustBoundary):
         if snapshot.get("alert_tool_enabled"):
             tools.append(StructuredTool.from_function(coroutine=alert_read))
 
+        tool_turns = AttemptToolTurns(run_id, run["attempt_id"])
+
         class DurableBudgetMiddleware(AgentMiddleware):
             async def awrap_model_call(self, request, handler):
                 current = runtime.store.get("run", run_id)
                 pending = [m for m in current["messages"] if m.get("status") == "pending"]
-                planning, stop_reason = runtime._plan_model_round(current, request)
+                digest = policy_digest(runtime.policies.snapshot())
+                scope = (current["id"], current["attempt_id"])
+                try:
+                    tail = tool_turns.messages(request.messages, scope, digest)
+                except ToolTurnError as error:
+                    raise FinalizeInvestigation(str(error), "tool_protocol_limited") from None
+                retained_bytes = protocol_bytes(tail) if tail else 0
+                planning, stop_reason = runtime._plan_model_round(current, request, retained_protocol_bytes=retained_bytes)
                 runtime._event(run_id, "model_budget_plan", planning)
                 if stop_reason:
                     raise FinalizeInvestigation(stop_reason, "budget_limited")
@@ -1468,13 +1519,39 @@ class Runtime(TrustBoundary):
                 messages = [HumanMessage(content="固定输入及已持久化证据的全局阅读视图：\n" + json.dumps(bounded_context, ensure_ascii=False, separators=(",", ":")))]
                 for message in messages:
                     runtime._approved_text(current, message.content)
-                request = request.override(messages=messages)
-                runtime._event(run_id, "context_rebuilt", {"evidence_count": len(current["evidence"]), "messages": 1,
-                                                           "notice": "模型上下文按持久证据重建；完整历史/原始证据保留，未重发全部工具历史"})
+                # The provider may return its final report while tools remain
+                # bound. Give that round the same bounded provider ceiling,
+                # while preserving this attempt's time for a tool-free report.
+                wall_left = (parse_time(current["deadline_at"]) - datetime.now(timezone.utc)).total_seconds()
+                report_reserve = current.get("execution_plan", {}).get("report_wall_seconds", 45)
+                round_timeout = min(180, wall_left - report_reserve - 1)
+                if round_timeout < 1:
+                    raise FinalizeInvestigation("剩余执行时间保留给报告，停止继续取证", "budget_limited")
+                request = request.override(messages=[*messages, *tail],
+                    model_settings={**request.model_settings, "timeout": round_timeout})
+                runtime._event(run_id, "context_rebuilt", {"evidence_count": len(current["evidence"]), "messages": 1 + len(tail),
+                                                           "retained_protocol_bytes": retained_bytes,
+                                                           "notice": "模型上下文按持久证据重建，并保留当前尝试内有界完整工具往返"})
                 if pending:
                     ids = {m["id"] for m in pending}
                     runtime._update(run_id, callback=lambda r: [m.update(status="processing") for m in r["messages"] if m["id"] in ids])
-                response = await runtime._invoke_model(run_id, lambda: handler(request))
+                policy_token = ACTIVE_TOOL_TURN_POLICY.set((run_id, current["attempt_id"], digest))
+                try:
+                    try:
+                        async with asyncio.timeout(round_timeout):
+                            response = await runtime._invoke_model(run_id, lambda: handler(request))
+                    except (TimeoutError, APITimeoutError):
+                        raise FinalizeInvestigation("当前模型回合达到时间上限，停止探索并使用剩余预算报告", "model_round_timeout") from None
+                    except PolicyError as error:
+                        if error.code != "policy_egress_stale_tool_protocol":
+                            raise
+                        raise FinalizeInvestigation("授权策略已变化，停止重放旧工具协议并重新投影报告", "tool_protocol_limited") from None
+                finally:
+                    ACTIVE_TOOL_TURN_POLICY.reset(policy_token)
+                try:
+                    response = replace(response, result=tool_turns.capture(response.result, scope, digest, visible_text))
+                except ToolTurnError as error:
+                    raise FinalizeInvestigation(str(error), "tool_protocol_limited") from None
                 for msg in response.result:
                     if isinstance(msg, AIMessage):
                         if visible_text(msg.content):
