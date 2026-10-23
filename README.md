@@ -2,7 +2,7 @@
 
 以 Chat 为中心的只读运维分析工作台，将 Skill、MCP、模型配置、分析报告与原始证据放在同一工作空间。采用 [MIT 协议](LICENSE)。
 
-[当前规格](openspec/specs/) · [设计索引](docs/design/README.md) · [验证摘要](docs/validation/2026-10-22.md) · [交付状态](docs/status.md)
+[当前规格](openspec/specs/) · [设计索引](docs/design/README.md) · [开发路线图](docs/design/development-roadmap.md) · [验证摘要](docs/validation/2026-10-22.md) · [交付状态](docs/status.md)
 
 当前应用、数据库、执行器与测试面向 Mac 本机运行。此仓库提供通用部署入口；数据源、身份映射、查询目录和模型由部署者自行配置。公开文档是去标识化说明，图片是完全新制的通用演示素材，均不对应某个现场环境。
 
