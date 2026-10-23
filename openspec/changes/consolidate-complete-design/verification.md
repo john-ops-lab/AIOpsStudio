@@ -17,7 +17,10 @@
 - OpenSpec 全量严格校验 12/12 通过；本 change 为文档整合，主规格不变，没有用规划声明新能力。
 - 已审查实际暂存差异，与复核文档字节一致；变更仅为 14 份设计/入口/合同/状态及本次 OpenSpec 记录，应用、主规格、依赖和图片无差异。
 - 完整暂存树通过现有安全扫描、Gitleaks 和仓库外私有 profile 比对，88 项已知私有材料，无命中；未关闭或绕过钩子。
-- 远端读回、推送门禁及准确提交 CI 在完成后补充，未执行项不记为通过。
+- 整合提交 [77fa9bb](https://github.com/john-ops-lab/EasyOps/commit/77fa9bb1ea6b8e2e90cb38dcf1cd72806e097ad0) 正常推送到 main；远端分支与本地一致，14/14 修改文件的远端 Git blob 与本地提交逐一匹配。
+- 推送钩子检查实际目标和完整祖先历史，通过现有通用/私有比对，无命中。十四项 Issue 发布前再次只读确认无变化，本次没有更新其正文或状态。
+- 该准确提交的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39922353315) 成功，完整公开历史检查与合成 Git 回归均通过。
+- 本验证记录在上述发布与 CI 后补充；记录提交本身需按自己的 SHA 查看[安全工作流](https://github.com/john-ops-lab/EasyOps/actions/workflows/publication-security.yml)，不复用前一提交结果。
 
 ## 应用边界
 
