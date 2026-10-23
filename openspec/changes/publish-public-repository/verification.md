@@ -11,7 +11,7 @@
 
 ## Remote Verification
 
-首次创建 [john-ops-lab/EasyOps](https://github.com/john-ops-lab/EasyOps) 并同步 main 后，读取元数据确认公共可见、主分支为 main、许可证为 MIT；当时本地和远端提交及文件树一致，关键源码、设计、规格和验证说明存在。
+首次创建 [john-ops-lab/AIOpsStudio](https://github.com/john-ops-lab/AIOpsStudio) 并同步 main 后，读取元数据确认公共可见、主分支为 main、许可证为 MIT；当时本地和远端提交及文件树一致，关键源码、设计、规格和验证说明存在。
 
 这些是初次发布时的观察，不证明当前远端状态，也不证明旧历史对象已删除。本页已移除旧对象标识与链接，后续应以当前清理变更的远端复核结果为准。
 

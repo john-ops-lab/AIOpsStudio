@@ -29,7 +29,7 @@ export default function MessageTimeline({ messages, runs, attachments, liveRun, 
     if (nearBottom.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
   }, [messages.length, runs.filter((r) => r.report).length, liveRun?.events?.length]);
   return <div className="message-timeline" ref={scroll} onScroll={() => { const el = scroll.current; if (el) nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100; }}>
-    {!messages.length ? <div className="chat-welcome"><span className="easyops-mark">E</span><h2>今天想分析什么？</h2><p>选择 Skill 并提供目标或告警。报告、原始证据和后续追问会保存在同一会话中。</p></div> : null}
+    {!messages.length ? <div className="chat-welcome"><span className="aiopsstudio-mark">A</span><h2>今天想分析什么？</h2><p>选择 Skill 并提供目标或告警。报告、原始证据和后续追问会保存在同一会话中。</p></div> : null}
     <ol className="conversation-messages" aria-label="会话消息">
       {messages.map((m, index) => {
         const user = m.role === "user", linked = runMap.get(m.run_id), report = !user && linked?.run.report;
@@ -39,7 +39,7 @@ export default function MessageTimeline({ messages, runs, attachments, liveRun, 
           content = analysis || content || textValue((report as Entity).summary);
         }
         return <li key={m.id || `${m.role}-${index}`} className={`conversation-message ${user ? "from-user" : "from-assistant"}`}>
-          <span className={`message-avatar ${user ? "" : "easyops-mark"}`} aria-label={user ? "你" : "EasyOps"}>{user ? "U" : "E"}</span>
+          <span className={`message-avatar ${user ? "" : "aiopsstudio-mark"}`} aria-label={user ? "你" : "AIOpsStudio"}>{user ? "U" : "A"}</span>
           <div className="message-content">
             <div className="message-text"><MessageBody text={content} summarize={!user} onEvidence={(id) => onEvidence(id, m.run_id)} /></div>
             <time className="message-time">{dateTime(m.created_at)}</time>
@@ -53,7 +53,7 @@ export default function MessageTimeline({ messages, runs, attachments, liveRun, 
       })}
     </ol>
     {liveRun ? <div className="assistant-progress">
-      <span className="easyops-mark">E</span><div><button className="progress-disclosure" onClick={() => onEvents(liveRun.id)}><CheckCircle2 size={17} aria-hidden="true" /><strong>{activeRun(liveRun.status) ? (liveRun.status === "queued" ? "等待分析执行槽" : "正在分析并保存执行记录") : "本轮执行记录已保存"}</strong><Status value={liveRun.status} /></button><small>{liveRun.evidence?.length || 0} 份证据 · <button className="text-link" onClick={() => onEvents(liveRun.id)}>查看执行过程</button></small></div>
+      <span className="aiopsstudio-mark">A</span><div><button className="progress-disclosure" onClick={() => onEvents(liveRun.id)}><CheckCircle2 size={17} aria-hidden="true" /><strong>{activeRun(liveRun.status) ? (liveRun.status === "queued" ? "等待分析执行槽" : "正在分析并保存执行记录") : "本轮执行记录已保存"}</strong><Status value={liveRun.status} /></button><small>{liveRun.evidence?.length || 0} 份证据 · <button className="text-link" onClick={() => onEvents(liveRun.id)}>查看执行过程</button></small></div>
     </div> : null}
     {runs.map((run, i) => run.report && !withReport.has(run.id) ? <ReportCard key={run.id} run={run} round={i + 1} onOpen={() => onOpenReport(run.id)} /> : null)}
     {runs.some((r) => r.report) ? <div className="followup-suggestions"><span>你可以继续问：</span><Button onClick={() => onFollowup("请继续核对上一轮报告中的未覆盖范围，并说明需要补充的证据。 ")}><MessageSquare size={14} aria-hidden="true" />核对未覆盖范围</Button></div> : null}

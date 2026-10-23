@@ -4,7 +4,7 @@
 
 ## Why
 
-用户要求新建公共 GitHub 仓库 `john-ops-lab/EasyOps`，采用 MIT 并同步代码、正式设计、OpenSpec 与公开验证摘要，使仓库可以独立阅读。
+用户要求新建公共 GitHub 仓库 `john-ops-lab/AIOpsStudio`，采用 MIT 并同步代码、正式设计、OpenSpec 与公开验证摘要，使仓库可以独立阅读。
 
 ## What Changes
 

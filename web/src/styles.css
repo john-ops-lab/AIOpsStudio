@@ -2727,8 +2727,8 @@ tbody tr:hover {
 /* Chat workspace: conversation is primary, each analysis keeps its own canvas. */
 .chat-shell { --navy: #142238; color: #172235; }
 .chat-shell .sidebar { width: 230px; padding: 0 12px; }
-.chat-shell .brand { height: 70px; gap: 12px; padding: 0 10px; font-size: 24px; flex-shrink: 0; }
-.easyops-mark { width: 34px; height: 36px; flex: 0 0 34px; border-radius: 8px; display: inline-flex; justify-content: center; align-items: center; background: #1263ff; color: #fff; font-size: 27px; font-weight: 750; line-height: 1; box-shadow: inset 0 0 0 1px #ffffff13; }
+.chat-shell .brand { height: 70px; gap: 8px; padding: 0 6px; font-size: 20px; flex-shrink: 0; white-space: nowrap; }
+.aiopsstudio-mark { width: 34px; height: 36px; flex: 0 0 34px; border-radius: 8px; display: inline-flex; justify-content: center; align-items: center; background: #1263ff; color: #fff; font-size: 27px; font-weight: 750; line-height: 1; box-shadow: inset 0 0 0 1px #ffffff13; }
 .chat-shell .sidebar nav { padding-top: 13px; gap: 4px; }
 .chat-shell .sidebar nav button { font-size: 14px; min-height: 43px; gap: 13px; padding: 10px 12px; }
 .chat-shell .sidebar nav button.active { background: #145df1; box-shadow: none; }
@@ -2773,7 +2773,7 @@ tbody tr:hover {
 .conversation-notices > .btn { margin: 0 0 5px; padding: 3px 7px; min-height: 25px; font-size: 11px; }
 .message-timeline { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 12px 24px 20px; scroll-behavior: auto; }
 .chat-welcome { padding: min(9vh, 75px) 24px; text-align: center; color: #697b94; max-width: 560px; margin: auto; }
-.chat-welcome > .easyops-mark { width: 42px; height: 44px; font-size: 32px; margin-bottom: 20px; }
+.chat-welcome > .aiopsstudio-mark { width: 42px; height: 44px; font-size: 32px; margin-bottom: 20px; }
 .chat-welcome h2 { font-size: 23px; color: #17253a; margin-bottom: 12px; }
 .chat-welcome p { font-size: 14px; line-height: 1.9; }
 .conversation-message { display: flex; gap: 14px; padding: 12px 0 20px; min-width: 0; }
@@ -2905,7 +2905,7 @@ tbody tr:hover {
   .message-timeline { padding: 8px 14px 15px; }
   .conversation-message { gap: 9px; padding-bottom: 15px; }
   .message-content { max-width: calc(100% - 37px); }
-  .message-avatar, .assistant-progress > .easyops-mark { width: 28px; height: 29px; flex-basis: 28px; font-size: 22px; }
+  .message-avatar, .assistant-progress > .aiopsstudio-mark { width: 28px; height: 29px; flex-basis: 28px; font-size: 22px; }
   .from-user .message-avatar { font-size: 12px; }
   .message-text, .message-text .markdown-prose { font-size: 13px; }
   .assistant-progress { gap: 9px; }

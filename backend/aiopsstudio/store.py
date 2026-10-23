@@ -9,6 +9,8 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Any
 
+from .compat import TABLE_SUFFIXES, TABLE_PREFIX, LEGACY_TABLE_PREFIX, table_namespace
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -35,11 +37,26 @@ class Store:
             self.conn = psycopg.connect(database_url, autocommit=True)
         else:
             raise ValueError("数据库地址必须使用 PostgreSQL；SQLite 仅用于测试")
+        try:
+            self.atomic(self._initialize_schema)
+        except BaseException:
+            self.conn.close()
+            raise
+
+    def _initialize_schema(self):
+        names = [f"{prefix}_{suffix}" for prefix in (TABLE_PREFIX, LEGACY_TABLE_PREFIX) for suffix in TABLE_SUFFIXES]
+        if self.sqlite:
+            rows = self._execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            existing = {row[0] for row in rows}
+        else:
+            existing = {name for name in names if self._execute("SELECT to_regclass(?)", (name,)).fetchone()[0] is not None}
+        self.namespace = table_namespace(existing)
+        self._documents, self._events, self._worker_slot = [f"{self.namespace}_{suffix}" for suffix in TABLE_SUFFIXES]
         data_type = "TEXT" if self.sqlite else "JSONB"
-        self._execute(f"CREATE TABLE IF NOT EXISTS easyops_documents (kind TEXT NOT NULL, id TEXT NOT NULL, data {data_type} NOT NULL, PRIMARY KEY(kind,id))")
-        self._execute(f"CREATE TABLE IF NOT EXISTS easyops_events (run_id TEXT NOT NULL, seq INTEGER NOT NULL, data {data_type} NOT NULL, PRIMARY KEY(run_id,seq))")
-        self._execute("CREATE TABLE IF NOT EXISTS easyops_worker_slot (id INTEGER PRIMARY KEY, owner TEXT, run_id TEXT, expires_at DOUBLE PRECISION NOT NULL DEFAULT 0)")
-        self._execute("INSERT INTO easyops_worker_slot(id, expires_at) VALUES (1,0) ON CONFLICT(id) DO NOTHING")
+        self._execute(f"CREATE TABLE IF NOT EXISTS {self._documents} (kind TEXT NOT NULL, id TEXT NOT NULL, data {data_type} NOT NULL, PRIMARY KEY(kind,id))")
+        self._execute(f"CREATE TABLE IF NOT EXISTS {self._events} (run_id TEXT NOT NULL, seq INTEGER NOT NULL, data {data_type} NOT NULL, PRIMARY KEY(run_id,seq))")
+        self._execute(f"CREATE TABLE IF NOT EXISTS {self._worker_slot} (id INTEGER PRIMARY KEY, owner TEXT, run_id TEXT, expires_at DOUBLE PRECISION NOT NULL DEFAULT 0)")
+        self._execute(f"INSERT INTO {self._worker_slot}(id, expires_at) VALUES (1,0) ON CONFLICT(id) DO NOTHING")
 
     def _execute(self, sql: str, args=()):
         return self.conn.execute(sql if self.sqlite else sql.replace("?", "%s"), args)
@@ -75,12 +92,12 @@ class Store:
 
     def get(self, kind: str, id: str) -> dict | None:
         with self._lock:
-            row = self._execute("SELECT data FROM easyops_documents WHERE kind=? AND id=?", (kind, id)).fetchone()
+            row = self._execute(f"SELECT data FROM {self._documents} WHERE kind=? AND id=?", (kind, id)).fetchone()
             return self._unpack(row[0]) if row else None
 
     def list(self, kind: str) -> list[dict]:
         with self._lock:
-            rows = self._execute("SELECT data FROM easyops_documents WHERE kind=? ORDER BY id", (kind,)).fetchall()
+            rows = self._execute(f"SELECT data FROM {self._documents} WHERE kind=? ORDER BY id", (kind,)).fetchall()
             return [self._unpack(row[0]) for row in rows]
 
     def save(self, kind: str, id: str, data: dict, expected_revision: int | None = None) -> dict:
@@ -92,40 +109,40 @@ class Store:
             value = copy.deepcopy(data)
             value.update(id=id, revision=revision + 1, updated_at=utcnow())
             value.setdefault("created_at", previous.get("created_at", utcnow()) if previous else utcnow())
-            self._execute("INSERT INTO easyops_documents(kind,id,data) VALUES (?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data", (kind, id, self._pack(value)))
+            self._execute(f"INSERT INTO {self._documents}(kind,id,data) VALUES (?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data", (kind, id, self._pack(value)))
             return copy.deepcopy(value)
         return self.atomic(write)
 
     def delete(self, kind: str, id: str):
-        return self.atomic(lambda: self._execute("DELETE FROM easyops_documents WHERE kind=? AND id=?", (kind, id)))
+        return self.atomic(lambda: self._execute(f"DELETE FROM {self._documents} WHERE kind=? AND id=?", (kind, id)))
 
     def event(self, run_id: str, type: str, payload: dict) -> dict:
         def write():
-            last = self._execute("SELECT COALESCE(MAX(seq),0) FROM easyops_events WHERE run_id=?", (run_id,)).fetchone()[0]
+            last = self._execute(f"SELECT COALESCE(MAX(seq),0) FROM {self._events} WHERE run_id=?", (run_id,)).fetchone()[0]
             cursor = self.get("event_cursor", run_id) or {}
             seq = max(last, cursor.get("last_seq", 0)) + 1
             self.save("event_cursor", run_id, {"last_seq": seq})
             item = {"id": seq, "seq": seq, "run_id": run_id, "type": type, "payload": copy.deepcopy(payload), "created_at": utcnow()}
-            self._execute("INSERT INTO easyops_events(run_id,seq,data) VALUES (?,?,?)", (run_id, seq, self._pack(item)))
+            self._execute(f"INSERT INTO {self._events}(run_id,seq,data) VALUES (?,?,?)", (run_id, seq, self._pack(item)))
             return item
         return self.atomic(write)
 
     def events(self, run_id: str, after: int = 0) -> list[dict]:
         with self._lock:
-            return [self._unpack(row[0]) for row in self._execute("SELECT data FROM easyops_events WHERE run_id=? AND seq>? ORDER BY seq", (run_id, after)).fetchall()]
+            return [self._unpack(row[0]) for row in self._execute(f"SELECT data FROM {self._events} WHERE run_id=? AND seq>? ORDER BY seq", (run_id, after)).fetchall()]
 
     def purge_events(self, run_id: str) -> None:
         """Remove expired payloads while retaining monotonic SSE cursor metadata."""
         def purge():
-            last = self._execute("SELECT COALESCE(MAX(seq),0) FROM easyops_events WHERE run_id=?", (run_id,)).fetchone()[0]
+            last = self._execute(f"SELECT COALESCE(MAX(seq),0) FROM {self._events} WHERE run_id=?", (run_id,)).fetchone()[0]
             cursor = self.get("event_cursor", run_id) or {}
             self.save("event_cursor", run_id, {"last_seq": max(last, cursor.get("last_seq", 0))})
-            self._execute("DELETE FROM easyops_events WHERE run_id=?", (run_id,))
+            self._execute(f"DELETE FROM {self._events} WHERE run_id=?", (run_id,))
         return self.atomic(purge)
 
     def claim_job(self, owner: str) -> dict | None:
         def claim():
-            sql = "SELECT owner,run_id,expires_at FROM easyops_worker_slot WHERE id=1"
+            sql = f"SELECT owner,run_id,expires_at FROM {self._worker_slot} WHERE id=1"
             slot = self._execute(sql if self.sqlite else sql + " FOR UPDATE").fetchone()
             now = time.time()
             if slot[1] and slot[2] > now:
@@ -140,24 +157,24 @@ class Store:
                     self.event(interrupted["id"], "failed", interrupted["error"])
             queued = sorted((r for r in self.list("run") if r.get("status") == "queued"), key=lambda r: (r.get("created_at", ""), r["id"]))
             if not queued:
-                self._execute("UPDATE easyops_worker_slot SET owner=NULL,run_id=NULL,expires_at=0 WHERE id=1")
+                self._execute(f"UPDATE {self._worker_slot} SET owner=NULL,run_id=NULL,expires_at=0 WHERE id=1")
                 return None
             run = queued[0]
             run.update(status="running", lease_owner=owner, lease_expires_at=now + self.lease_seconds)
             saved = self.save("run", run["id"], run)
-            self._execute("UPDATE easyops_worker_slot SET owner=?,run_id=?,expires_at=? WHERE id=1", (owner, run["id"], now + self.lease_seconds))
+            self._execute(f"UPDATE {self._worker_slot} SET owner=?,run_id=?,expires_at=? WHERE id=1", (owner, run["id"], now + self.lease_seconds))
             return saved
         return self.atomic(claim)
 
     def renew_job(self, id: str, owner: str) -> bool:
         def renew():
-            cursor = self._execute("UPDATE easyops_worker_slot SET expires_at=? WHERE id=1 AND owner=? AND run_id=? AND expires_at>?", (time.time() + self.lease_seconds, owner, id, time.time()))
+            cursor = self._execute(f"UPDATE {self._worker_slot} SET expires_at=? WHERE id=1 AND owner=? AND run_id=? AND expires_at>?", (time.time() + self.lease_seconds, owner, id, time.time()))
             return cursor.rowcount == 1
         return self.atomic(renew)
 
     def release_job(self, id: str, owner: str) -> bool:
         def release():
-            cursor = self._execute("UPDATE easyops_worker_slot SET owner=NULL,run_id=NULL,expires_at=0 WHERE id=1 AND owner=? AND run_id=?", (owner, id))
+            cursor = self._execute(f"UPDATE {self._worker_slot} SET owner=NULL,run_id=NULL,expires_at=0 WHERE id=1 AND owner=? AND run_id=?", (owner, id))
             return cursor.rowcount == 1
         return self.atomic(release)
 

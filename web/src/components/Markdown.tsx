@@ -36,7 +36,7 @@ function remarkEvidenceReferences() {
           });
         children.push({
           type: "link",
-          url: `#easyops-evidence/${match[1]}`,
+          url: `#aiopsstudio-evidence/${match[1]}`,
           children: [{ type: "text", value: match[0] }],
         });
         offset = match.index + match[0].length;
@@ -62,7 +62,7 @@ export default function Markdown({
   const components = useMemo<Components>(
     () => ({
       a: ({ children, href }) => {
-        const reference = href?.match(/^#easyops-evidence\/(ev_[a-f0-9]{32})$/);
+        const reference = href?.match(/^#aiopsstudio-evidence\/(ev_[a-f0-9]{32})$/);
         if (reference)
           return interactive ? (
             <button

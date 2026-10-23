@@ -8,10 +8,10 @@ from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from easyops.main import create_app
-from easyops.agui import configure_agui, protocol_binding_id
-from easyops.runtime import resource_owner, stream_authorized
-from easyops.store import Store
+from aiopsstudio.main import create_app
+from aiopsstudio.agui import configure_agui, protocol_binding_id
+from aiopsstudio.runtime import resource_owner, stream_authorized
+from aiopsstudio.store import Store
 from test_runtime import runtime, tool_payload
 
 

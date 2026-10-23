@@ -34,7 +34,7 @@ export async function api<T = Entity>(
   }
   if (!response.ok) {
     if (response.status === 401 && path !== "/login" && path !== "/session")
-      window.dispatchEvent(new Event("easyops:session-expired"));
+      window.dispatchEvent(new Event("aiopsstudio:session-expired"));
     throw new ApiError(
       response.status,
       data.detail || data.message || response.statusText,

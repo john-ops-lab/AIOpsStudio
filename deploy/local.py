@@ -19,6 +19,8 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from deploy.settings import load_config
+from backend.aiopsstudio.compat import (environment, DOCKER_STATE_LABEL, LEGACY_DOCKER_STATE_LABEL,
+    DOCKER_OWNER_LABEL, LEGACY_APPLICATION, docker_state_matches)
 
 SETTINGS = load_config()
 STATE = SETTINGS['state_dir']
@@ -49,16 +51,17 @@ def init():
 
 
 def env():
+    current = environment()
     cfg = init()
     database = SETTINGS['database']
-    return {**os.environ,
-        'EASYOPS_DATABASE_URL': os.environ.get('EASYOPS_DATABASE_URL') or f"postgresql://{quote(database['user'], safe='')}:{quote(cfg['db_password'], safe='')}@127.0.0.1:{PORTS['postgres']}/{quote(database['name'], safe='')}",
-        'EASYOPS_MASTER_KEY_FILE': str(PRIVATE / 'master.key'),
-        'EASYOPS_PASSWORD_FILE': str(PRIVATE / 'admin-password'),
-        'EASYOPS_PUBLIC_ORIGIN': f"http://127.0.0.1:{PORTS['web']}",
-        'EASYOPS_ARTIFACT_DIR': str(STATE / 'artifacts'),
-        'EASYOPS_PRIVATE_DIR': str(PRIVATE),
-        'EASYOPS_API_URL': f"http://127.0.0.1:{PORTS['api']}",
+    return {**current,
+        'AIOPSSTUDIO_DATABASE_URL': current.get('AIOPSSTUDIO_DATABASE_URL') or f"postgresql://{quote(database['user'], safe='')}:{quote(cfg['db_password'], safe='')}@127.0.0.1:{PORTS['postgres']}/{quote(database['name'], safe='')}",
+        'AIOPSSTUDIO_MASTER_KEY_FILE': current.get('AIOPSSTUDIO_MASTER_KEY_FILE') or str(PRIVATE / 'master.key'),
+        'AIOPSSTUDIO_PASSWORD_FILE': current.get('AIOPSSTUDIO_PASSWORD_FILE') or str(PRIVATE / 'admin-password'),
+        'AIOPSSTUDIO_PUBLIC_ORIGIN': current.get('AIOPSSTUDIO_PUBLIC_ORIGIN') or f"http://127.0.0.1:{PORTS['web']}",
+        'AIOPSSTUDIO_ARTIFACT_DIR': current.get('AIOPSSTUDIO_ARTIFACT_DIR') or str(STATE / 'artifacts'),
+        'AIOPSSTUDIO_PRIVATE_DIR': current.get('AIOPSSTUDIO_PRIVATE_DIR') or str(PRIVATE),
+        'AIOPSSTUDIO_API_URL': current.get('AIOPSSTUDIO_API_URL') or f"http://127.0.0.1:{PORTS['api']}",
         'PORT': str(PORTS['web']),
         'DO_NOT_TRACK': '1',
         'COPILOTKIT_TELEMETRY_DISABLED': 'true',
@@ -66,28 +69,30 @@ def env():
 
 
 def db():
-    if os.environ.get('EASYOPS_DATABASE_URL'):
+    if environment().get('AIOPSSTUDIO_DATABASE_URL'):
         print('使用外部数据库配置；未创建或启动数据库容器')
         return
     cfg = init()
     database = SETTINGS['database']
     container = database['container']
     state_id = hashlib.sha256(str(STATE).encode()).hexdigest()[:16]
-    probe = subprocess.run(DOCKER + ['inspect', '--format', '{{ index .Config.Labels "easyops.state_id" }}', container], capture_output=True, text=True)
+    container_labels = '{{ index .Config.Labels "' + DOCKER_STATE_LABEL + '" }}|{{ index .Config.Labels "' + LEGACY_DOCKER_STATE_LABEL + '" }}'
+    volume_labels = '{{ index .Labels "' + DOCKER_STATE_LABEL + '" }}|{{ index .Labels "' + LEGACY_DOCKER_STATE_LABEL + '" }}'
+    probe = subprocess.run(DOCKER + ['inspect', '--format', container_labels, container], capture_output=True, text=True)
     if probe.returncode == 0:
-        if probe.stdout.strip() != state_id:
+        if not docker_state_matches(probe.stdout, state_id):
             raise RuntimeError('同名数据库容器不属于此状态目录，未启动；请配置独立容器名')
         subprocess.run(DOCKER + ['start', container], check=True, stdout=subprocess.DEVNULL)
     else:
-        volume = subprocess.run(DOCKER + ['volume', 'inspect', '--format', '{{ index .Labels "easyops.state_id" }}', database['volume']], capture_output=True, text=True)
-        if volume.returncode == 0 and volume.stdout.strip() != state_id:
+        volume = subprocess.run(DOCKER + ['volume', 'inspect', '--format', volume_labels, database['volume']], capture_output=True, text=True)
+        if volume.returncode == 0 and not docker_state_matches(volume.stdout, state_id):
             raise RuntimeError('同名数据库卷不属于此状态目录，未挂载；请配置独立卷名')
         if volume.returncode != 0:
-            subprocess.run(DOCKER + ['volume', 'create', '--label', 'easyops.state_id=' + state_id, database['volume']], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(DOCKER + ['volume', 'create', '--label', DOCKER_STATE_LABEL + '=' + state_id, database['volume']], check=True, stdout=subprocess.DEVNULL)
         db_env = PRIVATE / 'postgres.env'
         private_write(db_env, f"POSTGRES_DB={database['name']}\nPOSTGRES_USER={database['user']}\nPOSTGRES_PASSWORD=" + cfg['db_password'] + '\n')
         subprocess.run(DOCKER + ['run', '-d', '--name', container, '--restart', 'unless-stopped',
-            '--label', 'easyops.owner=workbench', '--label', 'easyops.state_id=' + state_id, '--cpus', '1', '--memory', '512m', '--pids-limit', '128',
+            '--label', DOCKER_OWNER_LABEL + '=workbench', '--label', DOCKER_STATE_LABEL + '=' + state_id, '--cpus', '1', '--memory', '512m', '--pids-limit', '128',
             '--env-file', str(db_env), '-p', f"127.0.0.1:{PORTS['postgres']}:5432",
             '-v', database['volume'] + ':/var/lib/postgresql/data', database['image']],
             check=True, stdout=subprocess.DEVNULL)
@@ -113,13 +118,16 @@ def process_identity(pid):
 def legacy_identity(name, pid, path, current):
     """Migrate existing task PID files only after checking this project's launch."""
     commands = {
-        'api': ([str(ROOT / 'backend/.venv/bin/python'), '-m', 'uvicorn', 'easyops.application:create_app', '--factory', '--host', '127.0.0.1', '--port', str(PORTS['api'])], ROOT / 'backend'),
+        'api': ([str(ROOT / 'backend/.venv/bin/python'), '-m', 'uvicorn', 'aiopsstudio.application:create_app', '--factory', '--host', '127.0.0.1', '--port', str(PORTS['api'])], ROOT / 'backend'),
         'web': ([SETTINGS['node_binary'], 'server.mjs'], ROOT / 'web'),
     }
     if SETTINGS['ssh_tunnel']['enabled']:
         commands['ssh-tunnel'] = (tunnel_command(), ROOT)
     expected = commands.get(name)
-    if not expected or current['command'] != ' '.join(expected[0]):
+    allowed = {' '.join(expected[0])} if expected else set()
+    if name == 'api' and expected:
+        allowed.add(' '.join(LEGACY_APPLICATION if part == 'aiopsstudio.application:create_app' else part for part in expected[0]))
+    if not expected or current['command'] not in allowed:
         return False
     try:
         birth = time.mktime(time.strptime(current['started_at'], '%a %b %d %H:%M:%S %Y'))
@@ -190,7 +198,7 @@ def start():
     db()
     if SETTINGS['ssh_tunnel']['enabled']:
         tunnel()
-    spawn('api', [str(python), '-m', 'uvicorn', 'easyops.application:create_app', '--factory', '--host', '127.0.0.1', '--port', str(PORTS['api'])], ROOT / 'backend')
+    spawn('api', [str(python), '-m', 'uvicorn', 'aiopsstudio.application:create_app', '--factory', '--host', '127.0.0.1', '--port', str(PORTS['api'])], ROOT / 'backend')
     spawn('web', [SETTINGS['node_binary'], 'server.mjs'], ROOT / 'web')
     listeners = [('api', PORTS['api']), ('web', PORTS['web'])]
     if SETTINGS['ssh_tunnel']['enabled']:

@@ -15,14 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'backend'))
 from deploy.local import env, STATE
-from easyops.store import Store
+from aiopsstudio.store import Store
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--id', required=True)
     args = parser.parse_args()
-    store = Store(env()['EASYOPS_DATABASE_URL'])
+    store = Store(env()['AIOPSSTUDIO_DATABASE_URL'])
     try:
         run = store.get('run', args.id)
         report = run['report']

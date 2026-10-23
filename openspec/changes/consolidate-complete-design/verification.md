@@ -5,7 +5,7 @@
 ## 基线与保留
 
 - 基线 main：`dda65118f00531fba5b495b0ec34a07d82372a64`，开始时本机与远端一致；只读读取十四项 Issue，十三项仍为 open/待实施。
-- 新统一入口：`docs/design/EasyOps完整设计.md`。旧总体、管理、增量与路线图保留来源与原链接，增加迁移提示；根 README、合同、设计索引与状态页同步入口。
+- 新统一入口：`docs/design/AIOpsStudio完整设计.md`。旧总体、管理、增量与路线图保留来源与原链接，增加迁移提示；根 README、合同、设计索引与状态页同步入口。
 - 当前 Chat 业务 API/run SSE 与已有 AG-UI 路径分别描述；多用户、历史保留、证据截断及当前中断处理采用主规格/源码，旧目标不升格为实现。
 
 ## 验证进度
@@ -17,10 +17,10 @@
 - OpenSpec 全量严格校验 12/12 通过；本 change 为文档整合，主规格不变，没有用规划声明新能力。
 - 已审查实际暂存差异，与复核文档字节一致；变更仅为 14 份设计/入口/合同/状态及本次 OpenSpec 记录，应用、主规格、依赖和图片无差异。
 - 完整暂存树通过现有安全扫描、Gitleaks 和仓库外私有 profile 比对，88 项已知私有材料，无命中；未关闭或绕过钩子。
-- 整合提交 [77fa9bb](https://github.com/john-ops-lab/EasyOps/commit/77fa9bb1ea6b8e2e90cb38dcf1cd72806e097ad0) 正常推送到 main；远端分支与本地一致，14/14 修改文件的远端 Git blob 与本地提交逐一匹配。
+- 整合提交 [77fa9bb](https://github.com/john-ops-lab/AIOpsStudio/commit/77fa9bb1ea6b8e2e90cb38dcf1cd72806e097ad0) 正常推送到 main；远端分支与本地一致，14/14 修改文件的远端 Git blob 与本地提交逐一匹配。
 - 推送钩子检查实际目标和完整祖先历史，通过现有通用/私有比对，无命中。十四项 Issue 发布前再次只读确认无变化，本次没有更新其正文或状态。
-- 该准确提交的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39922353315) 成功，完整公开历史检查与合成 Git 回归均通过。
-- 本验证记录在上述发布与 CI 后补充；记录提交本身需按自己的 SHA 查看[安全工作流](https://github.com/john-ops-lab/EasyOps/actions/workflows/publication-security.yml)，不复用前一提交结果。
+- 该准确提交的 [Publication security CI](https://github.com/john-ops-lab/AIOpsStudio/actions/runs/39922353315) 成功，完整公开历史检查与合成 Git 回归均通过。
+- 本验证记录在上述发布与 CI 后补充；记录提交本身需按自己的 SHA 查看[安全工作流](https://github.com/john-ops-lab/AIOpsStudio/actions/workflows/publication-security.yml)，不复用前一提交结果。
 
 ## 应用边界
 

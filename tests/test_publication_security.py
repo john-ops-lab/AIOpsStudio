@@ -1,6 +1,7 @@
 """Exercise real Git hooks and real Gitleaks against disposable repositories only."""
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1]
 TOKEN = 'ghp_' + 'Q8mZ3nR5' * 4 + 'Ab9X'
@@ -17,7 +19,7 @@ SITE_IP = '.'.join(map(str, [10, 23, 45, 67]))
 
 class PublicationGate(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix='easyops-gate-test-')
+        self.temporary = tempfile.TemporaryDirectory(prefix='aiopsstudio-gate-test-')
         self.base = Path(self.temporary.name)
         self.root = self.base / 'repo'
         self.root.mkdir()
@@ -71,6 +73,13 @@ class PublicationGate(unittest.TestCase):
     def install(self):
         self.command('git', 'config', '--unset', 'core.hooksPath')
         self.command(sys.executable, 'scripts/install_security_hooks.py')
+
+    def private_profile(self):
+        credential = 'synthetic-private-' + '9d3a' * 6
+        secret = self.base / 'credential'; secret.write_text(credential); secret.chmod(0o600)
+        profile = self.base / 'profile.json'; profile.write_text(json.dumps({'version':1,'text_sources':[str(secret)]})); profile.chmod(0o600)
+        python = self.root / 'backend/.venv/bin/python'; python.parent.mkdir(parents=True); python.symlink_to(sys.executable)
+        return credential, secret, profile
 
     def test_clean_snapshot_and_examples(self):
         self.write('.env.example', 'API_KEY=\nAPI_URL=https://api.example.invalid/v1\n')
@@ -129,7 +138,7 @@ class PublicationGate(unittest.TestCase):
         self.assertIn('binary_requires_explicit_review', result.stdout)
 
     def test_png_requires_review_and_clean_metadata(self):
-        source = SOURCE / 'design/workbench-concept.png'
+        source = SOURCE / 'design/aiopsstudio-workbench-concept.png'
         target = self.root / 'demo.png'
         target.write_bytes(source.read_bytes())
         self.command('git', 'add', 'demo.png')
@@ -156,10 +165,7 @@ class PublicationGate(unittest.TestCase):
         self.denied(result, 'gitleaks_missing')
 
     def test_private_profile_dynamic_read_and_missing_source(self):
-        credential = 'synthetic-private-' + '9d3a' * 6
-        secret = self.base / 'credential'; secret.write_text(credential); secret.chmod(0o600)
-        profile = self.base / 'profile.json'; profile.write_text(json.dumps({'version':1,'text_sources':[str(secret)]})); profile.chmod(0o600)
-        python = self.root / 'backend/.venv/bin/python'; python.parent.mkdir(parents=True); python.symlink_to(sys.executable)
+        credential, secret, profile = self.private_profile()
         self.command('git', 'config', 'easyops.securityProfile', str(profile))
         self.write('guide.md', credential)
         self.denied(self.gate(), 'known_private_material', credential)
@@ -167,6 +173,76 @@ class PublicationGate(unittest.TestCase):
         self.assertNotIn(credential, result.stdout + result.stderr)
         secret.unlink()
         self.denied(self.gate(), 'private_source_unavailable', credential)
+
+    def test_new_and_same_legacy_profile_keys_still_scan_private_values(self):
+        credential, _, profile = self.private_profile()
+        self.command('git', 'config', 'aiopsstudio.securityProfile', str(profile))
+        self.write('guide.md', credential)
+        self.denied(self.gate(), 'known_private_material', credential)
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        self.denied(self.gate(), 'known_private_material', credential)
+
+    def test_conflicting_profile_keys_fail_closed_without_exposing_paths(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        other = self.base / 'different-profile.json'
+        self.command('git', 'config', 'aiopsstudio.securityProfile', str(other))
+        self.denied(self.gate(), 'private_profile_conflict', str(profile))
+        self.assertNotIn(str(other), self.gate().stdout)
+
+    def test_invalid_new_profile_never_falls_back_to_legacy(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        self.command('git', 'config', 'aiopsstudio.securityProfile', '')
+        self.denied(self.gate(), 'private_profile_config_failed', str(profile))
+
+    def test_multiple_values_of_one_profile_key_are_rejected(self):
+        _, _, profile = self.private_profile()
+        for _ in range(2):
+            self.command('git', 'config', '--add', 'aiopsstudio.securityProfile', str(profile))
+        self.denied(self.gate(), 'private_profile_config_failed', str(profile))
+
+    def test_installer_new_profile_uses_canonical_key_only(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', '--unset', 'core.hooksPath')
+        self.command(sys.executable, 'scripts/install_security_hooks.py', '--local-profile', str(profile))
+        self.assertEqual(self.command('git', 'config', '--local', '--get', 'aiopsstudio.securityProfile').stdout.strip(), str(profile.resolve()))
+        self.assertEqual(self.command('git', 'config', '--local', '--get', 'easyops.securityProfile', ok=False).returncode, 1)
+
+    def test_installer_preserves_legacy_profile_and_accepts_same_pair(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        self.command('git', 'config', '--unset', 'core.hooksPath')
+        self.command(sys.executable, 'scripts/install_security_hooks.py')
+        self.assertEqual(self.command('git', 'config', '--local', '--get', 'aiopsstudio.securityProfile').stdout.strip(), str(profile.resolve()))
+        self.assertEqual(self.command('git', 'config', '--local', '--get', 'easyops.securityProfile').stdout.strip(), str(profile))
+        self.command(sys.executable, 'scripts/install_security_hooks.py', '--local-profile', str(profile))
+
+    def test_installer_conflict_does_not_mutate_git_configuration(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        self.command('git', 'config', '--unset', 'core.hooksPath')
+        before = (self.root / '.git/config').read_bytes()
+        other = self.base / 'other-profile.json'
+        result = self.command(sys.executable, 'scripts/install_security_hooks.py', '--local-profile', str(other), ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / '.git/config').read_bytes(), before)
+        self.assertNotIn(str(profile), result.stdout + result.stderr)
+        self.command('git', 'config', 'aiopsstudio.securityProfile', str(other))
+        before = (self.root / '.git/config').read_bytes()
+        result = self.command(sys.executable, 'scripts/install_security_hooks.py', ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / '.git/config').read_bytes(), before)
+
+    def test_installer_invalid_new_profile_does_not_drop_legacy(self):
+        _, _, profile = self.private_profile()
+        self.command('git', 'config', 'easyops.securityProfile', str(profile))
+        self.command('git', 'config', 'aiopsstudio.securityProfile', '')
+        self.command('git', 'config', '--unset', 'core.hooksPath')
+        before = (self.root / '.git/config').read_bytes()
+        result = self.command(sys.executable, 'scripts/install_security_hooks.py', ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / '.git/config').read_bytes(), before)
 
     def test_installer_does_not_overwrite_existing_hooks(self):
         result = self.command(sys.executable, 'scripts/install_security_hooks.py', ok=False)
@@ -235,6 +311,98 @@ class PublicationGate(unittest.TestCase):
     def test_filename_is_scanned_without_leaking_it(self):
         self.write('source-' + SITE_IP + '.txt', 'safe')
         self.denied(self.gate(), 'private_network_address', SITE_IP)
+
+
+class PrivateDatabaseNamespace(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location('publication_private_collector', SOURCE / 'scripts/security_local_values.py')
+        self.collector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.collector)
+
+    class Connection:
+        def __init__(self, tables, read_only='on'):
+            self.tables = set(tables)
+            self.queries = []
+            self.row = None
+            self.read_only = read_only
+
+        def execute(self, query, params=()):
+            self.queries.append((query, params))
+            if query == 'SELECT to_regclass(%s)':
+                self.row = (params[0] if params[0] in self.tables else None,)
+            elif query == 'SHOW transaction_read_only':
+                self.row = (self.read_only,)
+            elif query.startswith('SELECT kind,id,data FROM '):
+                self.row = []
+            else:
+                raise AssertionError('collector attempted an unexpected database operation')
+            return self
+
+        def fetchone(self):
+            return self.row
+
+        def fetchall(self):
+            return self.row
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    @staticmethod
+    def tables(prefix):
+        return {prefix + '_' + suffix for suffix in ('documents', 'events', 'worker_slot')}
+
+    def test_existing_new_or_legacy_namespace_is_selected_read_only(self):
+        for prefix in ('aiopsstudio', 'easyops'):
+            with self.subTest(prefix=prefix):
+                connection = self.Connection(self.tables(prefix))
+                self.assertEqual(self.collector.document_table(connection), prefix + '_documents')
+                self.assertEqual(len(connection.queries), 6)
+                self.assertTrue(all(query == 'SELECT to_regclass(%s)' for query, _ in connection.queries))
+
+    def test_missing_partial_mixed_or_duplicate_namespace_is_rejected(self):
+        for tables in (set(), {'easyops_documents'}, {'aiopsstudio_documents'},
+                self.tables('easyops') | {'aiopsstudio_events'},
+                self.tables('aiopsstudio') | {'easyops_worker_slot'},
+                self.tables('easyops') | self.tables('aiopsstudio')):
+            with self.subTest(tables=sorted(tables)):
+                connection = self.Connection(tables)
+                with self.assertRaises(ValueError):
+                    self.collector.document_table(connection)
+                self.assertTrue(all(query == 'SELECT to_regclass(%s)' for query, _ in connection.queries))
+
+    def test_collector_checks_read_only_transaction_and_reads_selected_namespace(self):
+        from types import SimpleNamespace
+        # Fake dependencies and synthetic paths ensure no real database, key or
+        # application initialization is involved in this collector regression.
+        class File:
+            def read_bytes(self):
+                return b'synthetic-external-master-key'
+        for prefix in ('aiopsstudio', 'easyops'):
+            for read_only in ('on', 'off'):
+                with self.subTest(prefix=prefix, read_only=read_only):
+                    connection = self.Connection(self.tables(prefix), read_only)
+                    options = {}
+                    def connect(**kwargs):
+                        options.update(kwargs)
+                        return connection
+                    modules = {'psycopg': SimpleNamespace(connect=connect),
+                        'cryptography.fernet': SimpleNamespace(Fernet=lambda key: object())}
+                    with patch.dict(sys.modules, modules), \
+                            patch.object(self.collector, 'external_file', return_value=File()), \
+                            patch.object(self.collector, 'json_value', return_value='synthetic-connection-password'):
+                        profile = {'postgres': {'host': '127.0.0.1', 'port': 5432, 'database': 'fixture', 'user': 'fixture',
+                            'password_source': {}, 'master_key_file': '/absolute/external/master.key'}}
+                        if read_only == 'off':
+                            with self.assertRaises(ValueError):
+                                self.collector.collect(profile)
+                            self.assertEqual(connection.queries, [('SHOW transaction_read_only', ())])
+                        else:
+                            self.assertEqual(self.collector.collect(profile), [])
+                            self.assertIn(f'SELECT kind,id,data FROM {prefix}_documents ', connection.queries[-1][0])
+                    self.assertEqual(options['options'], '-c default_transaction_read_only=on')
 
 
 if __name__ == '__main__':

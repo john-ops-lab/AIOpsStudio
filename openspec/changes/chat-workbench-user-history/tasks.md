@@ -30,6 +30,6 @@
 
 ## Workflow follow-up
 
-- 2026-10-22 后续说明：用户随后已授权新建公共 EasyOps 仓库；实际同步由独立 `publish-public-repository` 变更跟踪。以下为本次应用优化原有范围，不覆盖后续发布授权。
+- 2026-10-22 后续说明：用户随后已授权新建公共 AIOpsStudio 仓库；实际同步由独立 `publish-public-repository` 变更跟踪。以下为本次应用优化原有范围，不覆盖后续发布授权。
 - 本次交付保留可审查变更，不进行 GitHub push、Issue/PR 或发布；等待用户后续指令。
 - 全部要求与验证完成后，可将 delta 同步至主 specs 并归档；不以勾选任务替代验证证据。

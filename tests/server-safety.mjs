@@ -5,6 +5,15 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { apiUpstream } from '../web/environment.mjs';
+
+const apiUrl = 'http://127.0.0.1:8000';
+assert.equal(apiUpstream({}), apiUrl);
+assert.equal(apiUpstream({ AIOPSSTUDIO_API_URL: apiUrl }), apiUrl);
+assert.equal(apiUpstream({ EASYOPS_API_URL: apiUrl }), apiUrl);
+assert.equal(apiUpstream({ AIOPSSTUDIO_API_URL: apiUrl, EASYOPS_API_URL: apiUrl }), apiUrl);
+assert.throws(() => apiUpstream({ AIOPSSTUDIO_API_URL: apiUrl, EASYOPS_API_URL: 'http://127.0.0.1:8001' }), /冲突/);
+const { EASYOPS_API_URL: legacyUpstream, ...testEnvironment } = process.env;
 
 const received = [];
 const api = createServer((req, res) => {
@@ -21,7 +30,7 @@ const port = reserve.address().port;
 await new Promise(resolve => reserve.close(resolve));
 const web = spawn(process.execPath, ['server.mjs'], {
   cwd: fileURLToPath(new URL('../web/', import.meta.url)),
-  env: { ...process.env, PORT: String(port), EASYOPS_API_URL: `http://127.0.0.1:${api.address().port}`,
+  env: { ...testEnvironment, PORT: String(port), AIOPSSTUDIO_API_URL: `http://127.0.0.1:${api.address().port}`,
     DO_NOT_TRACK: '1', COPILOTKIT_TELEMETRY_DISABLED: 'true' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });

@@ -14,7 +14,7 @@
 
 ## 3. GitHub 同步与验证
 
-- [x] 3.1 创建公共 john-ops-lab/EasyOps 并同步 main，当时远端分支与本地提交一致。
+- [x] 3.1 创建公共 john-ops-lab/AIOpsStudio 并同步 main，当时远端分支与本地提交一致。
 - [x] 3.2 核对公开属性、MIT、设计、OpenSpec 和验证文件，记录历史发布结论。
 
 ## Workflow follow-up

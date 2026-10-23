@@ -5,7 +5,7 @@
 ## GitHub Issues
 
 - 发布前读取仓库 Issues：无已有 Issue，未发现重复工作项。
-- 创建[总路线图 #1](https://github.com/john-ops-lab/EasyOps/issues/1)及十三个实施 Issue（#2–#14）；稳定规划编号为 R01–R13。
+- 创建[总路线图 #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1)及十三个实施 Issue（#2–#14）；稳定规划编号为 R01–R13。
 - 实施项按 M1/M2/M3/M4 分布为 4/5/3/1；硬依赖图无环，集成依赖单独说明。
 - 回填实际链接后重新读取远端列表：14/14 的标题、正文和 open 状态与发布稿一致。总清单、实施项的总路线图链接及依赖链接均存在，验收项初始全部未勾选。
 - 每项包含目标与当前基础、交付范围、非目标、硬/集成依赖、可观察验收标准、验收材料和建议 OpenSpec 变更名。
@@ -28,7 +28,7 @@
 - 变更文档中的 36 个相对文件/目录链接目标存在，`git diff --check` 通过。
 - 已审查实际暂存差异；暂存路线图与已复核的十三项范围/验收材料一致。完整暂存树通过敏感信息门禁，无命中。
 - 发布准备结束后复核 110 个原运行源文件、6 个私有文件、3 个进程身份及数据库配置/Git 状态，保持原基线。
-- 文档发布提交 [bb4f41b](https://github.com/john-ops-lab/EasyOps/commit/bb4f41b5197b139cb074c47d33945dc8eef61284) 已推送，远端主分支与提交一致；10 个变更文档的 Git 对象逐一匹配，正式路线图正文读回一致。
+- 文档发布提交 [bb4f41b](https://github.com/john-ops-lab/AIOpsStudio/commit/bb4f41b5197b139cb074c47d33945dc8eef61284) 已推送，远端主分支与提交一致；10 个变更文档的 Git 对象逐一匹配，正式路线图正文读回一致。
 - 提交钩子检查实际暂存树，推送钩子检查包含新提交的完整历史，均无敏感信息命中。
-- 对应的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39913897296) 成功，`Complete public Git history` 与 `Synthetic Git regression` 均通过。
-- 本记录在上述发布验证后补充；后续提交应按其自身 SHA 核对 [安全工作流记录](https://github.com/john-ops-lab/EasyOps/actions/workflows/publication-security.yml)，不能直接复用本次结果。
+- 对应的 [Publication security CI](https://github.com/john-ops-lab/AIOpsStudio/actions/runs/39913897296) 成功，`Complete public Git history` 与 `Synthetic Git regression` 均通过。
+- 本记录在上述发布验证后补充；后续提交应按其自身 SHA 核对 [安全工作流记录](https://github.com/john-ops-lab/AIOpsStudio/actions/workflows/publication-security.yml)，不能直接复用本次结果。

@@ -4,7 +4,7 @@ export default function RuntimeProvider({ children }: { children: ReactNode }) {
   return (
     <CopilotKit
       runtimeUrl="/api/copilotkit"
-      agent="easyops"
+      agent="aiopsstudio"
       showDevConsole={false}
     >
       {children}

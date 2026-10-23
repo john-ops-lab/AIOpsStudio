@@ -1,32 +1,32 @@
 # 设计文档
 
-本目录提供 EasyOps 正式路线图及历史设计的公开副本。保留架构决策、接口语义及已实现/待验证的区别，移除现场名称、地址、资产、配置、运行标识和私有材料索引。正文里的历史时间与完成状态不自动代表当前提交或某个新部署环境。
+本目录提供 AIOpsStudio 正式路线图及历史设计的公开副本。保留架构决策、接口语义及已实现/待验证的区别，移除现场名称、地址、资产、配置、运行标识和私有材料索引。正文里的历史时间与完成状态不自动代表当前提交或某个新部署环境。
 
 当前主入口为“运维工作台”，用户流程统一称“分析”；应用、数据库、执行器和测试面向 Mac 本机，外部源只读接入。当前行为见 [OpenSpec 主规格](../../openspec/specs/)，部署见 [README](../../README.md)，历史验证范围见[交付状态](../status.md)。
 
 ## 最新完整设计
 
-**统一入口：[EasyOps 完整设计（最新整合版）](EasyOps完整设计.md)。** 更新于 2026-10-23，包含状态矩阵、产品与架构、Chat/历史/附件、Skill/MCP/模型管理、数据/证据/执行、安全、部署、E01–E21 和 R01–R13 完整开发工作包。区分已实现、待验证、待开发与本轮不纳入。
+**统一入口：[AIOpsStudio 完整设计（最新整合版）](AIOpsStudio完整设计.md)。** 更新于 2026-10-23，包含状态矩阵、产品与架构、Chat/历史/附件、Skill/MCP/模型管理、数据/证据/执行、安全、部署、E01–E21 和 R01–R13 完整开发工作包。区分已实现、待验证、待开发与本轮不纳入。
 
-当前应用行为仍以主规格为准，历史测试不是本次重新验收。后续设计修订维护完整设计；原四份材料保留为来源与兼容链接，不作为并行的最新设计。
+当前应用行为仍以主规格为准，历史测试不是本次重新验收。后续设计修订维护完整设计；原四份材料保留为来源，仓库内引用已更新到更名后的路径，不作为并行的最新设计。
 
 ## 整合来源
 
 | 材料 | 保留用途 |
 | --- | --- |
-| [总体设计 v0.5](EasyOps总体设计-v0.1.md) | 架构与原设计分期来源，文件名沿用 v0.1。 |
+| [总体设计 v0.5](AIOpsStudio总体设计-v0.1.md) | 架构与原设计分期来源，文件名沿用 v0.1。 |
 | [Skill、MCP 与运行配置](工作台Skill与MCP管理设计-v0.1.md) | 管理生命周期与接口目标来源。 |
 | [可信分析与协作增量设计](可信分析与协作增量设计-v0.1.md) | 研究缺口及治理契约来源，目标未自动变为已有能力。 |
-| [路线图来源副本](development-roadmap.md) | 原十三工作包与阶段登记；最新完整内容已纳入完整设计第 15 节，实时进度见[总 Issue #1](https://github.com/john-ops-lab/EasyOps/issues/1)。 |
+| [路线图来源副本](development-roadmap.md) | 原十三工作包与阶段登记；最新完整内容已纳入完整设计第 15 节，实时进度见[总 Issue #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1)。 |
 
 ## 公开通用图片
 
 | 材料 | 阅读边界 |
 | --- | --- |
-| [Chat 说明](prototype/20261022-Chat工作台Demo-v0.1.md) · [PNG](assets/20261022-Chat工作台Demo-v0.1.png) · [生成要求](prototype/20261022-Chat工作台Demo-v0.1.prompt.md) | 完全新制的通用 Chat 演示，不包含真实会话、环境、时间线或数值。 |
-| [架构说明](assets/architecture-v1/说明与检查.md) · [PNG](assets/architecture-v1/EasyOps-AI运维平台架构-v1.png) · [生成要求](assets/architecture-v1/prompt.txt) · [整理说明](assets/architecture-v1/revision-prompt.txt) | 完全新制的通用职责图，说明 Chat、Skill、Agent、MCP、CMDB 与监控的关系，不是部署拓扑。 |
+| [Chat 说明](prototype/20261022-Chat工作台Demo-v0.1.md) · [PNG](assets/20261022-AIOpsStudio-Chat工作台Demo-v0.1.png) · [生成要求](prototype/20261022-Chat工作台Demo-v0.1.prompt.md) | 完全新制的通用 Chat 演示，不包含真实会话、环境、时间线或数值。 |
+| [架构说明](assets/architecture-v1/说明与检查.md) · [PNG](assets/architecture-v1/AIOpsStudio-AI运维平台架构-v1.png) · [生成要求](assets/architecture-v1/prompt.txt) · [整理说明](assets/architecture-v1/revision-prompt.txt) | 完全新制的通用职责图，说明 Chat、Skill、Agent、MCP、CMDB 与监控的关系，不是部署拓扑。 |
 
-图片文件名沿用原链接入口，像素内容已重新生成。它们不对应现场数据，不是历史验收截图，也没有原值与演示名称的映射表。正式技术行为以规格、源码和实际验证为准。
+图片文件名和引用已统一使用 AIOpsStudio，像素内容由更名变更独立复核。它们不对应现场数据，不是历史验收截图，也没有原值与演示名称的映射表。正式技术行为以规格、源码和实际验证为准。
 
 ## 公开范围
 

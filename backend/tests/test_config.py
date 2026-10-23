@@ -4,9 +4,9 @@ import json
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 import pytest
-from easyops.config import ConfigService, Vault, ConfigError, redact
-from easyops.main import create_app
-from easyops.store import Store, StoreConflict
+from aiopsstudio.config import ConfigService, Vault, ConfigError, redact
+from aiopsstudio.main import create_app
+from aiopsstudio.store import Store, StoreConflict
 
 SKILL = {"name": "cmdb-query", "display_name": "CMDB 查询", "description": "查真实 CMDB", "content": "---\nname: cmdb-query\ndescription: 只读查询 CMDB\n---\n先确认目标，再引用证据。", "references": {}, "input_schema": {"type": "object"}, "dependencies": []}
 
@@ -217,7 +217,7 @@ def load_local_deploy(tmp_path):
     import importlib.util
     from pathlib import Path
     path = Path(__file__).resolve().parents[2] / "deploy/local.py"
-    spec = importlib.util.spec_from_file_location("easyops_test_local_deploy", path)
+    spec = importlib.util.spec_from_file_location("aiopsstudio_test_local_deploy", path)
     local = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(local)
     local.STATE = tmp_path

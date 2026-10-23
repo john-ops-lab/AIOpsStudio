@@ -22,10 +22,10 @@ import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from deploy.settings import load_config
+from deploy.settings import load_config, environment
 CONFIG = load_config()
 STATE = CONFIG['state_dir']
-BASE = os.environ.get('EASYOPS_PUBLIC_ORIGIN', f"http://127.0.0.1:{CONFIG['ports']['web']}")
+BASE = environment().get('AIOPSSTUDIO_PUBLIC_ORIGIN', f"http://127.0.0.1:{CONFIG['ports']['web']}")
 TERMINAL = {'succeeded', 'partial', 'failed', 'needs_input', 'cancelled'}
 
 

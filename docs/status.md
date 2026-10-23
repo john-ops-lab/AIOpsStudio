@@ -1,6 +1,6 @@
-# EasyOps 交付状态（公开投影）
+# AIOpsStudio 交付状态（公开投影）
 
-完整设计统一入口为 [EasyOps 完整设计](design/EasyOps完整设计.md)；当前行为以 [OpenSpec 主规格](../openspec/specs/) 为准。本页记录历史交付和验收边界，已移除现场名称、地址、源资产、模型配置、运行 ID、收据哈希与私有材料索引。它不是原始在线证据，也不代表当前公开提交已在任意环境完成验收。
+完整设计统一入口为 [AIOpsStudio 完整设计](design/AIOpsStudio完整设计.md)；当前行为以 [OpenSpec 主规格](../openspec/specs/) 为准。本页记录历史交付和验收边界，已移除现场名称、地址、源资产、模型配置、运行 ID、收据哈希与私有材料索引。它不是原始在线证据，也不代表当前公开提交已在任意环境完成验收。
 
 ## 已实现能力
 
@@ -36,7 +36,7 @@
 
 ## 仍待验证或实现
 
-后续交付按[开发路线图](design/development-roadmap.md)及[总 Issue #1](https://github.com/john-ops-lab/EasyOps/issues/1)的十三项工作跟踪；Issue 创建与路线图同步仅表示规划已登记，不改变下列能力和验收状态。
+后续交付按[开发路线图](design/development-roadmap.md)及[总 Issue #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1)的十三项工作跟踪；Issue 创建与路线图同步仅表示规划已登记，不改变下列能力和验收状态。
 
 - 完整业务影响、跨源身份完整性、历史拓扑、根因可信度及用户接受按实际案例分别验收。
 - 二进制内容提取、GLPI、自动告警触发、自动修复、Shell 执行、SSO 与生产高可用尚未提供。
@@ -45,10 +45,17 @@
 
 ## 公开副本与运行边界
 
-本机应用面向 Mac，部署入口已将状态目录、端口、数据库、可选 SSH 转发与数据源引导外置，通用用法见 [README](../README.md)。仓库不包含原运行实例、私有配置、用户历史、原始证据、模型端点或凭据。现有实例不因公开副本整理而迁移、重启或清空。
+本机应用面向 Mac，部署入口已将状态目录、端口、数据库、可选 SSH 转发与数据源引导外置，通用用法见 [README](../README.md)。仓库不包含原运行实例、私有配置、用户历史、原始证据、模型端点或凭据。该次公开副本整理没有迁移、重启或清空原实例；其后另行授权的品牌入口切换见下节。
 
 公开图片是完全新制的通用演示素材，不是实际截图或数据替换表。早期发布与当前历史清理分别由 [publish-public-repository](../openspec/changes/publish-public-repository/proposal.md) 和 [sanitize-public-history](../openspec/changes/sanitize-public-history/proposal.md) 跟踪。历史验收计数保持原义；本次配置改动的验证另记于当前变更，不把旧结果冒充当前提交的通过证据。
 
 ## 后续规划修订
 
 2026-10-23 将研究缺口并入原有 R01–R13，R07 源权限与模型数据出站前移 M1；后续契约见[增量设计](design/可信分析与协作增量设计-v0.1.md)和[路线图](design/development-roadmap.md)。本次只修订规划与设计，未改变当前应用主规格或运行能力，十三项仍待实施及业务验收。
+
+
+## 品牌与入口修订（2026-10-23）
+
+产品、Python 包、前后端 agent、安装默认值、完整设计、GitHub 仓库及现有 Issue 统一采用 AIOpsStudio。Mac 的 API/Web 已切换到新源码入口并保持原访问地址；原数据库、配置/密钥、历史、附件、卷和源转发经完整比对保持，未重建持久资产。兼容代码保留必要旧标识，不自动复制或改名数据。
+
+本次后端 156 项、安全合成 34 项、独立 PostgreSQL 7 组、隔离 HTTP/Node 9 组及实际入口切换 16 项检查通过；结构化范围见[更名验证](validation/2026-10-23-rebrand.json)，过程与发布记录见[OpenSpec 验证](../openspec/changes/rename-aiopsstudio/verification.md)。没有真实模型/源调用，原浏览器免登录未单独验收，不改变十三个工作包的业务完成状态或历史模型结果。

@@ -1,6 +1,6 @@
-# EasyOps AI 运维平台总体设计
+# AIOpsStudio AI 运维平台总体设计
 
-> 文档整合提示（2026-10-23）：本文件保留合并前的设计来源和既有链接。最新统一主文档为 [EasyOps 完整设计](EasyOps完整设计.md)，已实现/待验证/待开发状态及后续开发契约请以该文档和 OpenSpec 为准；本文件不再作为并行维护的最新设计。
+> 文档整合提示（2026-10-23）：本文件保留合并前的设计来源，文内引用随品牌更名更新。最新统一主文档为 [AIOpsStudio 完整设计](AIOpsStudio完整设计.md)，已实现/待验证/待开发状态及后续开发契约请以该文档和 OpenSpec 为准；本文件不再作为并行维护的最新设计。
 
 > 公开副本说明：本文件保留历史设计的版本、架构决策与已实现/待验证边界，现场标识和私有材料索引已去除。服务A、服务B等名称仅是独立示意，不能据此反推某个环境。当前主入口为“运维工作台”，用户流程统一称“分析”；多用户、Chat 历史及附件以 [OpenSpec 主规格](../../openspec/specs/)为准。应用、数据库、执行器和测试面向 Mac 本机；外部源只读访问。历史设计不能代替当前规格或验收，当前公开部署参数见 [README](../../README.md)。
 
@@ -8,13 +8,13 @@
 更新日期：2026-10-23，Asia/Shanghai（规划修订；保留 v0.5 架构基线）
 状态：v0.5 设计基线及后续阶段计划。首版工作台已在 Mac 本机实现并启动，覆盖 Skill/MCP 管理、模型设置、持久任务与告警调查入口；实际验证、失败记录及剩余范围以[首版交付状态](../status.md)为准。未宣称全量 E 案例或用户验收通过。文件路径沿用 v0.1，便于既有引用继续访问。
 
-EasyOps 采用 React + CopilotKit + Python Deep Agents，第一版即支持边聊边调查和页面联动，系统整体以简体中文向用户提供服务。Python Deep Agents 构建服务端运维 Agent：复用现有 Veops CMDB MCP，使用官方 Grafana MCP 查询指标、日志和 Trace，通过 Ongrid HTTP API 读取告警与事件，通过工单工具接入暂定的 GLPI。告警影响、变更影响与根因分析流程放在 EasyOps 的 Skill 中，由 Agent 调用工具执行，平台保存和校验证据。
+AIOpsStudio 采用 React + CopilotKit + Python Deep Agents，第一版即支持边聊边调查和页面联动，系统整体以简体中文向用户提供服务。Python Deep Agents 构建服务端运维 Agent：复用现有 Veops CMDB MCP，使用官方 Grafana MCP 查询指标、日志和 Trace，通过 Ongrid HTTP API 读取告警与事件，通过工单工具接入暂定的 GLPI。告警影响、变更影响与根因分析流程放在 AIOpsStudio 的 Skill 中，由 Agent 调用工具执行，平台保存和校验证据。
 
-Veops 是配置与依赖关系的数据来源；Ongrid 继续承担集中采集、遥测存储和监控告警；GLPI 暂定承担故障与变更工单。EasyOps 负责把这些信息关联成一次可追踪的调查。后续若 GLPI 不适合，可替换工单适配器并接入轻量 API 服务。
+Veops 是配置与依赖关系的数据来源；Ongrid 继续承担集中采集、遥测存储和监控告警；GLPI 暂定承担故障与变更工单。AIOpsStudio 负责把这些信息关联成一次可追踪的调查。后续若 GLPI 不适合，可替换工单适配器并接入轻量 API 服务。
 
 本次变更：按用户要求把 Skill、MCP 的在线查看、调用和配置纳入首版工作台，补齐草稿/发布/回退、依赖检查、指定 Skill 执行、工具试调、配置快照与调用记录；配套补充模型设置和基础运行概览设计。详细交互、服务端落点及验收见[工作台 Skill 与 MCP 管理设计](工作台Skill与MCP管理设计-v0.1.md)。后续实现见[Mac 应用说明](../../README.md)，设计要求与已验证范围分别记录。
 
-历史来源边界：CMDB 的持续同步由独立基础设施负责。EasyOps 消费只读接口，来源系统的同步验证不等于应用、工单接入或业务分析验收。公开设计不包含该环境的资产数量、节点标签、部署版本或实施索引。
+历史来源边界：CMDB 的持续同步由独立基础设施负责。AIOpsStudio 消费只读接口，来源系统的同步验证不等于应用、工单接入或业务分析验收。公开设计不包含该环境的资产数量、节点标签、部署版本或实施索引。
 
 开发阶段部署决定：应用、数据库、执行器与测试均在 Mac 本机；外部 CMDB、监控和告警接口保持只读接入。首版代码和历史验证范围见[应用入口](../../README.md)，设计条目本身不代表全部功能已验收。
 
@@ -32,11 +32,11 @@ Veops 是配置与依赖关系的数据来源；Ongrid 继续承担集中采集�
 
 先完成“人工选择一条告警或用中文提出调查请求 → 确认目标与窗口 → 边聊边查询依赖、遥测和相关工单 → 联动展示过程、影响报告与证据”的闭环；随后扩展变更影响分析和 RCA。对话、页面联动以及 Skill/MCP 在线管理均为首版能力，Webhook 自动触发在人工链路稳定后接入。
 
-首期以一个服务端 Agent、少量并发、只读调查为边界。应用运行在 Mac，模型推理使用外部模型 API。用户入口为 EasyOps Web 页面及其后端 API。
+首期以一个服务端 Agent、少量并发、只读调查为边界。应用运行在 Mac，模型推理使用外部模型 API。用户入口为 AIOpsStudio Web 页面及其后端 API。
 
 前端采用 React + TypeScript + CopilotKit，普通业务组件默认使用 shadcn/ui；Node CopilotKit runtime 对接 Python FastAPI 的 AG-UI 适配入口。用户可以在同一调查中查看实时进度、追问、补充条件、选择歧义对象，并从回答定位到 CI、时间线和证据。具体交互及执行边界见第 8.4～8.6 节。
 
-工作台还提供 Skill 管理、MCP 管理、模型与运行配置、调用记录及基础运行概览。用户可在线编辑和发布 Skill、选择版本发起调查、配置 MCP 连接并试调只读工具；配置生效和运行中任务的版本边界见第 8.7 节。MCP 配置管理的是 EasyOps 连接及工具开放范围，远端服务的安装升级仍由部署操作管理。
+工作台还提供 Skill 管理、MCP 管理、模型与运行配置、调用记录及基础运行概览。用户可在线编辑和发布 Skill、选择版本发起调查、配置 MCP 连接并试调只读工具；配置生效和运行中任务的版本边界见第 8.7 节。MCP 配置管理的是 AIOpsStudio 连接及工具开放范围，远端服务的安装升级仍由部署操作管理。
 
 首期不实现自动修复、SSH/Shell 执行、自动审批或修改源系统状态；不重新建设监控采集和 CMDB；不把多 Agent、向量数据库和知识库检索设为前置依赖。实验数据准备与故障注入独立于调查工具，后续实施时按明确的实验范围执行。
 
@@ -44,11 +44,11 @@ Veops 是配置与依赖关系的数据来源；Ongrid 继续承担集中采集�
 
 | 部分 | 当前基础 | 本项目需要完成 |
 | --- | --- | --- |
-| Veops / CMDB MCP | 历史设计已有配置关系和只读工具接入基础 | EasyOps 客户端、身份映射、Skill 与校验逻辑迁移；各部署自行核对工具目录 |
+| Veops / CMDB MCP | 历史设计已有配置关系和只读工具接入基础 | AIOpsStudio 客户端、身份映射、Skill 与校验逻辑迁移；各部署自行核对工具目录 |
 | Ongrid | 历史设计参考既有监控与告警能力 | Grafana 数据源核对、告警 API 接入、身份映射与场景验收；源码能力不代表现场启用 |
 | 官方 Grafana MCP | 历史预研有独立部署和信号对照记录；具体环境不公开 | 应用工具白名单、窗口/预算包装和证据服务；预研不等于完整分析验收 |
 | GLPI | 用户暂定选型；本轮明确暂不部署工单系统 | 后续单独安排部署、最小组织与用户配置、工单字段核对、API 接入、实验数据准备 |
-| EasyOps / Deep Agents | 已实现 Mac 首版单执行器、任务、证据、报告、配置和 PostgreSQL | 完整业务案例和后续恢复验收，见交付状态 |
+| AIOpsStudio / Deep Agents | 已实现 Mac 首版单执行器、任务、证据、报告、配置和 PostgreSQL | 完整业务案例和后续恢复验收，见交付状态 |
 | React / CopilotKit | Mac 中文工作台已集成，Node/AG-UI 读取同一持久任务；已做真实浏览器检查 | 持续按实际业务场景验证，不以构建通过代替调查正确性 |
 | Skill / MCP 在线管理 | Mac 首版已实现管理、版本发布、依赖校验、试调、审计及配套设置 | E16～E21 的全量组合验收与后续案例扩展 |
 
@@ -58,7 +58,7 @@ Veops 是配置与依赖关系的数据来源；Ongrid 继续承担集中采集�
 
 ```mermaid
 flowchart TB
-  subgraph EASY["EasyOps（Mac 首版及后续计划）"]
+  subgraph EASY["AIOpsStudio（Mac 首版及后续计划）"]
     direction LR
     W["React + CopilotKit<br/>中文工作台 · 对话与页面联动"]
     K["CopilotKit runtime<br/>Node · 对话协议转接"]
@@ -93,9 +93,9 @@ flowchart TB
   style EASY fill:#FAFAFF,stroke:#DDD6FE,color:#334155
 ```
 
-这是逻辑调用图，实线箭头表示请求方向，虚线表示调查方法约束，反向消息与状态流省略。React 提供业务工作台，CopilotKit 负责对话、共享状态与交互组件，AG-UI 连接页面交互和 Python Agent；MCP 连接 Agent 与数据工具。任务、证据、报告与校验由 EasyOps 实现，Skill 提供方法，实际调用由运行时完成；告警 API 工具位于 EasyOps 进程内。工单 MCP 初期也随应用进程部署，部署边界见第 11 节。Grafana MCP 通过 Grafana 数据源接口/代理访问三个后端，不经过 Ongrid AI，也不依赖再接一套 Prometheus MCP。
+这是逻辑调用图，实线箭头表示请求方向，虚线表示调查方法约束，反向消息与状态流省略。React 提供业务工作台，CopilotKit 负责对话、共享状态与交互组件，AG-UI 连接页面交互和 Python Agent；MCP 连接 Agent 与数据工具。任务、证据、报告与校验由 AIOpsStudio 实现，Skill 提供方法，实际调用由运行时完成；告警 API 工具位于 AIOpsStudio 进程内。工单 MCP 初期也随应用进程部署，部署边界见第 11 节。Grafana MCP 通过 Grafana 数据源接口/代理访问三个后端，不经过 Ongrid AI，也不依赖再接一套 Prometheus MCP。
 
-公开 [PNG 架构图](assets/architecture-v1/EasyOps-AI运维平台架构-v1.png) 已替换为完全新制的通用职责示意，不是部署截图或历史验收证据；技术选型以本节逻辑图、正文和当前规格为准。
+公开 [PNG 架构图](assets/architecture-v1/AIOpsStudio-AI运维平台架构-v1.png) 已替换为完全新制的通用职责示意，不是部署截图或历史验收证据；技术选型以本节逻辑图、正文和当前规格为准。
 
 | 模块 | 负责 | 主要产出 |
 | --- | --- | --- |
@@ -108,7 +108,7 @@ flowchart TB
 | 工具接入层 | 加载 MCP 工具、调用 Ongrid API 与工单 Provider，校验请求并记录结果 | 保留原生返回的证据记录及模型视图 |
 | 能力与运行配置管理 | Skill 内容、MCP连接/工具目录、模型配置、版本发布和依赖校验 | 不可变版本、生效配置、凭据引用、变更记录；管理请求走业务 API |
 
-EasyOps 的结果先在自身页面展示。首期不回写 Ongrid 调查报告或 GLPI 工单；源系统写回以后作为独立功能设计。
+AIOpsStudio 的结果先在自身页面展示。首期不回写 Ongrid 调查报告或 GLPI 工单；源系统写回以后作为独立功能设计。
 
 ## 3. Agent 与 Skill 设计
 
@@ -133,17 +133,17 @@ EasyOps 的结果先在自身页面展示。首期不回写 Ongrid 调查报告�
 
 三个分析 Skill 不等于三个独立 Agent。首期任务类型由用户入口确定，避免仅靠模型猜测任务类别。RCA 的步骤、分支、反证与报告要求详见第 7 节；它们将写入版本化 Skill，不另实现一套由 Ongrid AI 代跑的根因分析入口。
 
-Skill 的输入至少包含任务类型、目标/事件/工单引用、环境、固定分析窗口、可用工具清单和预算；输出遵循统一报告结构。工具名称、标签和查询模板从已核对的工具清单及查询目录读取。Skill 不能将 Ongrid 内部工具名称当作 EasyOps 已具备的工具。
+Skill 的输入至少包含任务类型、目标/事件/工单引用、环境、固定分析窗口、可用工具清单和预算；输出遵循统一报告结构。工具名称、标签和查询模板从已核对的工具清单及查询目录读取。Skill 不能将 Ongrid 内部工具名称当作 AIOpsStudio 已具备的工具。
 
 首期结构为每个分析 Skill 的 `SKILL.md`，附少量 `references/` 保存工具映射、报告示例和查询目录引用。共同的身份、时间与完整性规则由平台提供。Mac 首版已创建并发布 `cmdb-query` 和 `alert-impact-analysis`；变更与 RCA Skill 属后续 P3。
 
-在线管理补充内容浏览/编辑、导入草稿、校验、版本差异、发布启停和试运行。标准 Skill 内容与 EasyOps 的输入 schema、必需/可选工具绑定分别存储；正文及 `allowed-tools` 声明不授予工具权限。草稿试运行冻结测试快照并进入统一队列，正式任务引用已发布版本。详细规则见[管理设计第 2 节](工作台Skill与MCP管理设计-v0.1.md#2-skill-内容依赖与执行)。
+在线管理补充内容浏览/编辑、导入草稿、校验、版本差异、发布启停和试运行。标准 Skill 内容与 AIOpsStudio 的输入 schema、必需/可选工具绑定分别存储；正文及 `allowed-tools` 声明不授予工具权限。草稿试运行冻结测试快照并进入统一队列，正式任务引用已发布版本。详细规则见[管理设计第 2 节](工作台Skill与MCP管理设计-v0.1.md#2-skill-内容依赖与执行)。
 
 ### 3.3 既有 Skill / Guard 方法迁移
 
 保留现有动态模型发现、顺序查询、分页收齐、范围对账、来源时间与未知项处理方法。移除只适用于 Qoder 的调用入口、Hook 安装路径和本机文件预览约定。
 
-原 Guard 的参数前检、证据续读与校验、查询范围对账、独立事实保存，由 EasyOps 的工具包装器和证据服务承接。现有 CMDB MCP 的六工具签名、权限和结果保持兼容；新增统一字段放在 EasyOps 的证据记录中，不强改源 MCP 契约。
+原 Guard 的参数前检、证据续读与校验、查询范围对账、独立事实保存，由 AIOpsStudio 的工具包装器和证据服务承接。现有 CMDB MCP 的六工具签名、权限和结果保持兼容；新增统一字段放在 AIOpsStudio 的证据记录中，不强改源 MCP 契约。
 
 迁移验收使用已有 CMDB 问题及失败样例，分别检查工具结果与自然语言首答。复制 `SKILL.md` 或接通 MCP 不视为迁移完成。
 
@@ -167,7 +167,7 @@ Skill 的输入至少包含任务类型、目标/事件/工单引用、环境、
 
 采用 [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana)，复用 Ongrid 部署中的 Grafana 及其数据源。P0 选择通过兼容验证的发布版本，固定镜像版本/摘要及工具 schema；不把当前主分支能力直接当成所有发布版本的保证。首期不另部署 `prometheus/prometheus-mcp`，避免同一信号重复暴露两套查询入口。
 
-| 用途 | 官方工具候选 | EasyOps 使用约束 |
+| 用途 | 官方工具候选 | AIOpsStudio 使用约束 |
 | --- | --- | --- |
 | 数据源、指标及标签发现 | `list_datasources`、Prometheus 元数据/标签工具、Loki 标签工具、Tempo 属性工具 | 仅开放示例服务场景需要的发现工具；记录数据源 UID、实际标签、单位和版本 |
 | 指标查询 | `query_prometheus` | 明确 instant/range；range 使用绝对 `startTime/endTime` 和 `stepSeconds`，instant 使用明确评估时间 |
@@ -175,9 +175,9 @@ Skill 的输入至少包含任务类型、目标/事件/工单引用、环境、
 | Trace 检索 | `search_tempo_traces` | 显式 `start/end` 与实际 TraceQL；按选定 schema 使用参数，不能假定它支持自定义 `limit` 或分页游标 |
 | Trace 详情 | `get_tempo_trace` | 使用实际 schema 的 Trace ID 字段；保留服务、span、父子关系及字段缺失情况，不假定搜索摘要等于完整 Trace |
 
-这些工具名和参数由 2026-10-21 官方源码核对，实际注册以 P0 锁定版本为准。启动配置仅启用所需数据源与查询类别、禁用写工具；EasyOps 再按确切工具名筛选，Grafana 告警、Incident、管理和写入工具不进入本项目告警链路。源端使用专用查询身份，并验证该身份能读取目标数据源。
+这些工具名和参数由 2026-10-21 官方源码核对，实际注册以 P0 锁定版本为准。启动配置仅启用所需数据源与查询类别、禁用写工具；AIOpsStudio 再按确切工具名筛选，Grafana 告警、Incident、管理和写入工具不进入本项目告警链路。源端使用专用查询身份，并验证该身份能读取目标数据源。
 
-每个部署应读回实际数据源 UID、版本、Grafana 子路径和访问权限，由仓库外配置提供。数据源后端地址及必要路径前缀由部署者确认，EasyOps 不预置 UID、版本、主机或存储端口。
+每个部署应读回实际数据源 UID、版本、Grafana 子路径和访问权限，由仓库外配置提供。数据源后端地址及必要路径前缀由部署者确认，AIOpsStudio 不预置 UID、版本、主机或存储端口。
 
 P0 为示例服务场景维护一份小型查询目录：指标/标签/单位、服务到遥测标签的映射、经过核对的 PromQL/LogQL/TraceQL 示例及适用窗口。先复用官方发现能力和配置，模型不得根据服务名猜造指标；目录仅覆盖实验场景。
 
@@ -187,7 +187,7 @@ Grafana MCP 的日志限量/紧凑返回等能力优先使用，平台仍保存�
 
 ### 4.3 Ongrid 告警 API 工具
 
-在 `easyops-app` 内实现轻量 `OngridAlertClient`，将现有 HTTP API 登记为 Deep Agents 可调用的只读工具。Ongrid 已有 `query_incidents`、`get_incident_detail`、`correlate_incident` 等内部工具；本版复用事件数据和 API，不重建告警子系统，也不假定这些内部函数已经有对外 MCP 接口。
+在 `aiopsstudio-app` 内实现轻量 `OngridAlertClient`，将现有 HTTP API 登记为 Deep Agents 可调用的只读工具。Ongrid 已有 `query_incidents`、`get_incident_detail`、`correlate_incident` 等内部工具；本版复用事件数据和 API，不重建告警子系统，也不假定这些内部函数已经有对外 MCP 接口。
 
 | 拟定工具 | 功能 | 已有 HTTP 路由 |
 | --- | --- | --- |
@@ -209,7 +209,7 @@ Ongrid 的 `GET /v1/alerts/incidents/{id}/investigation` 可读取已有分析�
 
 ### 4.4 工单 MCP 与 GLPI 可替换适配器
 
-工单 MCP 对外暴露稳定的故障/变更语义，对内通过 `TicketProvider` 调用 GLPI。初期随 `easyops-app` 同进程挂载独立 MCP 端点，保留独立工具契约，不建设混合可观测与告警的通用 MCP 服务。轻量 API 替代方案实现相同 Provider 和字段语义，无需更改分析 Skill。
+工单 MCP 对外暴露稳定的故障/变更语义，对内通过 `TicketProvider` 调用 GLPI。初期随 `aiopsstudio-app` 同进程挂载独立 MCP 端点，保留独立工具契约，不建设混合可观测与告警的通用 MCP 服务。轻量 API 替代方案实现相同 Provider 和字段语义，无需更改分析 Skill。
 
 | 工具 | 功能 |
 | --- | --- |
@@ -235,7 +235,7 @@ Veops 继续作为权威 CMDB。GLPI 仅保存必要的 CI 外部引用；如需
 
 ### 5.1 资源身份
 
-EasyOps 保存轻量映射索引，不保存整套 CMDB 副本。映射记录包含：外部系统/实例、对象类型、原生 ID、环境/集群/命名空间、Veops CI 身份、匹配来源、验证时间与状态，以及不可变映射版本和可取得的 `valid_from/valid_to`。修改映射产生新版本，保留旧记录；有效时段未知时留空，不把验证时间当作历史生效时间。
+AIOpsStudio 保存轻量映射索引，不保存整套 CMDB 副本。映射记录包含：外部系统/实例、对象类型、原生 ID、环境/集群/命名空间、Veops CI 身份、匹配来源、验证时间与状态，以及不可变映射版本和可取得的 `valid_from/valid_to`。修改映射产生新版本，保留旧记录；有效时段未知时留空，不把验证时间当作历史生效时间。
 
 | 对象 | 优先使用的身份 | 需要保留的边界 |
 | --- | --- | --- |
@@ -259,9 +259,9 @@ EasyOps 保存轻量映射索引，不保存整套 CMDB 副本。映射记录包
 
 ## 6. 工具结果与证据契约
 
-### 6.1 EasyOps 证据视图与原生响应
+### 6.1 AIOpsStudio 证据视图与原生响应
 
-统一字段属于 EasyOps 保存的证据视图，不要求官方 Grafana MCP 或现有 CMDB MCP 改动契约。视图包含 `schema_version/evidence_id/source_system/source_instance`、工具及 schema 版本、`effective_query`、窗口类型、`read_started_at/read_finished_at`、原生响应引用、可核验数据、`warnings` 和 `completeness`。`request_id`、游标及截断字段仅在来源提供或平台确实实现相应语义时记录，不伪造源端能力。
+统一字段属于 AIOpsStudio 保存的证据视图，不要求官方 Grafana MCP 或现有 CMDB MCP 改动契约。视图包含 `schema_version/evidence_id/source_system/source_instance`、工具及 schema 版本、`effective_query`、窗口类型、`read_started_at/read_finished_at`、原生响应引用、可核验数据、`warnings` 和 `completeness`。`request_id`、游标及截断字段仅在来源提供或平台确实实现相应语义时记录，不伪造源端能力。
 
 Ongrid API 工具和自研工单 MCP 同样经过这个记录过程。MCP 文本、结构化内容和错误分别保存；若从文本提取程序字段，记录解释器版本和提取失败。无法可靠提取的内容可作为带来源的阅读材料，但不能直接进入自动计数或拓扑事实。
 
@@ -284,7 +284,7 @@ Ongrid API 工具和自研工单 MCP 同样经过这个记录过程。MCP 文本
 
 ### 6.3 EvidenceRecord
 
-EasyOps 为每次调用生成 `invocation_id`，为可保存的证据生成 `evidence_id`，保存 `purpose/config_revision`、工具名/版本、实际参数、数据源 UID 或 API 路径、原始响应、可取得的来源请求编号、读取时间、原始字节摘要和完整性。调查调用关联 run/attempt，手工工具试调关联独立 Invocation；预检拒绝等未取到响应的记录没有原始证据，不能补造。正文引用 `evidence_id`，页面可打开对应证据。官方 MCP 返回是该次调用的原始响应，不因此称为未经转换的后端原始遥测。
+AIOpsStudio 为每次调用生成 `invocation_id`，为可保存的证据生成 `evidence_id`，保存 `purpose/config_revision`、工具名/版本、实际参数、数据源 UID 或 API 路径、原始响应、可取得的来源请求编号、读取时间、原始字节摘要和完整性。调查调用关联 run/attempt，手工工具试调关联独立 Invocation；预检拒绝等未取到响应的记录没有原始证据，不能补造。正文引用 `evidence_id`，页面可打开对应证据。官方 MCP 返回是该次调用的原始响应，不因此称为未经转换的后端原始遥测。
 
 工具包装器在模型返回报告前保存证据；模型只能引用本次 run 已注册且可访问的证据。SHA-256 用于发现保存后的内容变化，不证明源系统数据真实或因果成立。
 
@@ -294,11 +294,11 @@ EasyOps 为每次调用生成 `invocation_id`，为可保存的证据生成 `evi
 
 ## 7. 三类调查流程
 
-### 7.0 参考 Ongrid 的方法与 EasyOps 的补齐
+### 7.0 参考 Ongrid 的方法与 AIOpsStudio 的补齐
 
-流程参考 Ongrid 的事件调查、信号关联、拓扑扩展与报告组织方法，并保留各方法的边界。EasyOps 自行实现任务、证据和报告契约，不引入来源系统的内部设备编号或整个运行时。
+流程参考 Ongrid 的事件调查、信号关联、拓扑扩展与报告组织方法，并保留各方法的边界。AIOpsStudio 自行实现任务、证据和报告契约，不引入来源系统的内部设备编号或整个运行时。
 
-| Ongrid 可借鉴的做法 | EasyOps 的采用方式与补齐 |
+| Ongrid 可借鉴的做法 | AIOpsStudio 的采用方式与补齐 |
 | --- | --- |
 | 先读取具体事件，再围绕窗口收集多类信号 | 用 Ongrid API 定位事件，用官方 Grafana MCP 按目的取证；每步明确对象、窗口和待回答问题，不为凑信号数盲查全部工具 |
 | 用拓扑上溯原因、向外分析影响 | 以 Veops 关系语义为准；调用依赖、部署和归属分层，保留原边方向与来源。Ongrid 拓扑只作后续可选来源，不能自动替代 CMDB |
@@ -308,7 +308,7 @@ EasyOps 为每次调用生成 `invocation_id`，为可保存的证据生成 `evi
 | 限制重复空查、输出证据与建议 | Skill 规定转向和收尾方法，运行时执行调用/时间硬预算。原始证据保留，报告通过引用、范围和事实核验后展示 |
 | 按需查知识或委派专家 | 首期用已知工单和查询目录作线索，不建设必选 RAG，不启用多 Agent；主机进程、文件或 K8s Events 工具缺席时明确缺口，不偷偷改用 Shell |
 
-Ongrid 自带 `related_alerts` 在所核对版本中主要按同设备/同无设备标识和邻近时间检索；EasyOps 不将它当作全业务关联结果。告警、CMDB、工单和遥测各自保留来源，冲突不由模型静默覆盖。
+Ongrid 自带 `related_alerts` 在所核对版本中主要按同设备/同无设备标识和邻近时间检索；AIOpsStudio 不将它当作全业务关联结果。告警、CMDB、工单和遥测各自保留来源，冲突不由模型静默覆盖。
 
 ### 7.1 告警影响分析
 
@@ -373,7 +373,7 @@ Ongrid 自带 `related_alerts` 在所核对版本中主要按同设备/同无设
 
 ### 7.4 Skill 使用的工具映射
 
-| 调查目的 | EasyOps 入口 | 与 Ongrid 参考流程的区别 |
+| 调查目的 | AIOpsStudio 入口 | 与 Ongrid 参考流程的区别 |
 | --- | --- | --- |
 | 事件与时间线 | `alert_get`、`alert_get_timeline`，按需 `alert_search` | 调用 HTTP API；不假定内部 `get_incident_detail` 能远程直接调用 |
 | 关联信号 | `query_prometheus`、`query_loki_logs`、`search_tempo_traces`、`get_tempo_trace` | 用官方工具按明确目的取证，替代对内部 `correlate_incident` 的依赖 |
@@ -413,13 +413,13 @@ Ongrid 自带 `related_alerts` 在所核对版本中主要按同设备/同无设
 
 任务保存主分析窗口及具名补查窗口、触发来源、目标身份、模型/Skill/工具/schema 版本、`config_revision`、预算和报告版本。首期设计为调查、Skill 试运行、人工工具试调及模型样本测试共享一个执行槽，排队总计最多 10 项；默认调查执行窗口为 5 分钟、最多 40 次工具调用，参数可配置。`tool_call_count` 计执行器发起的工具请求，发现类工具、显式续读和工具重试均计次；18 次收敛目标使用同一口径。MCP 协议握手/`tools/list` 等控制请求单独限流计数，不混作模型工具调用；连接探测不启动第二个调查执行器。
 
-另记 `source_request_count`，限制 EasyOps 直接向 Ongrid/GLPI 发起的 HTTP 请求，拟初始上限为每次调查 40 次，包含工具内部翻页和重试。这样一次 `alert_search` 不能隐藏无限扫描；达到任一预算即停止新请求。官方 MCP 内部向后端发出的请求不可由 EasyOps 完整计数，不宣称这个计数覆盖它们，而以所选工具的范围、限量和调用超时约束。
+另记 `source_request_count`，限制 AIOpsStudio 直接向 Ongrid/GLPI 发起的 HTTP 请求，拟初始上限为每次调查 40 次，包含工具内部翻页和重试。这样一次 `alert_search` 不能隐藏无限扫描；达到任一预算即停止新请求。官方 MCP 内部向后端发出的请求不可由 AIOpsStudio 完整计数，不宣称这个计数覆盖它们，而以所选工具的范围、限量和调用超时约束。
 
 预算按 attempt 独立累计，由运行时计数并停止派发，不能只写在 Skill 中；5 分钟到期进入有界收尾，拟最多再用 30 秒完成在途调用取消、证据落盘和报告校验，超时则保留可验证证据并按终止规则落状态。收尾不追加取证或新的模型调用；模型报告未完成时，用已验证结构化事实生成简要事实与限制页。运行截止时间与累计调用数持久化，进程恢复不重置预算。这些是待验证起始值，不是现有容量结论，不能为了通过预算静默缩小调查范围。
 
 ### 8.2 持久化与进程恢复
 
-采用 EasyOps 独立 PostgreSQL 保存任务、会话、消息、执行租约、事件、身份索引、报告索引、配置版本/凭据密文/变更审计和 LangGraph 持久检查点；原始证据及不可变 Skill 制品保存到独立持久卷。凭据主密钥独立于数据库配置，详见管理设计。数据库同时承担初期任务和消息队列，EasyOps 应用暂不引入 Redis/RabbitMQ；外部基础设施的队列不属于此项选择。CopilotKit Node runtime 的内存状态不是任务或聊天记录的权威存储。
+采用 AIOpsStudio 独立 PostgreSQL 保存任务、会话、消息、执行租约、事件、身份索引、报告索引、配置版本/凭据密文/变更审计和 LangGraph 持久检查点；原始证据及不可变 Skill 制品保存到独立持久卷。凭据主密钥独立于数据库配置，详见管理设计。数据库同时承担初期任务和消息队列，AIOpsStudio 应用暂不引入 Redis/RabbitMQ；外部基础设施的队列不属于此项选择。CopilotKit Node runtime 的内存状态不是任务或聊天记录的权威存储。
 
 实验版 API 和单调查执行器可在一个服务进程运行，领取任务必须先提交执行租约。进程重启后核对租约与检查点恢复；发现不兼容版本、无法确认的检查点或完整性问题时停止并显示原因，不直接重放未知状态。
 
@@ -456,11 +456,11 @@ Web 首版页面：调查列表、告警/工单入口、含对话区的调查详
 
 ### 8.5 接入、状态与重连契约
 
-采用“React CopilotKit → Node CopilotKit runtime → Python FastAPI AG-UI 适配层 → EasyOps 统一调度 → Deep Agents”的对话路径。告警列表、报告、证据、Skill/MCP/模型配置及调用记录通过同源业务 REST API 访问；管理动作不通过模型生成执行。Node 服务提供静态 React 产物与统一入口，代理业务 API/SSE，浏览器不直接连接数据源。前端默认 React + TypeScript + Vite；无需为首版引入 SSR。
+采用“React CopilotKit → Node CopilotKit runtime → Python FastAPI AG-UI 适配层 → AIOpsStudio 统一调度 → Deep Agents”的对话路径。告警列表、报告、证据、Skill/MCP/模型配置及调用记录通过同源业务 REST API 访问；管理动作不通过模型生成执行。Node 服务提供静态 React 产物与统一入口，代理业务 API/SSE，浏览器不直接连接数据源。前端默认 React + TypeScript + Vite；无需为首版引入 SSR。
 
 Python AG-UI 适配层负责消息接收、调度提交和事件投影，不能把每次浏览器连接当作一次新的 `agent.invoke`。先固定 Deep Agents、CopilotKit、AG-UI 桥接及前后端包的兼容版本，核对自管任务模式；官方默认示例仅作为协议参考，不直接采用其内存 runner 或内存检查点作为生产状态。
 
-- **关联标识：** `thread_id` 标识一个调查会话，关联一个 EasyOps `run_id`；该任务可以有多个 `attempt_id`。AG-UI 的协议运行标识单独映射到相应 attempt 和对话轮次，不与业务 `run_id` 混用。LangGraph 检查点按 attempt 隔离命名空间，跨 attempt 仅显式引用消息和适用证据。
+- **关联标识：** `thread_id` 标识一个调查会话，关联一个 AIOpsStudio `run_id`；该任务可以有多个 `attempt_id`。AG-UI 的协议运行标识单独映射到相应 attempt 和对话轮次，不与业务 `run_id` 混用。LangGraph 检查点按 attempt 隔离命名空间，跨 attempt 仅显式引用消息和适用证据。
 - **提交与幂等：** 消息携带 `client_message_id`、目标 attempt、页面上下文版本和选中对象；后端鉴权并持久化后返回接收状态。重复提交复用收据，不重复入队；旧页面提交到已结束或已替换的 attempt 时返回当前状态，不能猜测改投其他任务。
 - **事件与恢复：** 业务事件保存 `thread_id/run_id/attempt_id/event_seq` 及类型，`event_seq` 在同一任务内单调递增。AG-UI 消息/工具/共享状态事件是同一已保存状态的投影，不能再启动独立执行；普通业务 SSE 与 AG-UI 同时消费时按稳定事件 ID 去重。刷新或重连先读取消息与状态快照，再从快照序号续读；仅断开订阅不重放模型调用。
 - **流式文本：** token 增量属于临时展示，完成的消息和工具状态持久化。若断线时某段文本尚未保存，重连显示已保存内容和正在执行状态，不伪装成完整回放；关键状态、接收的用户消息和证据事件不能只存在于 token 流中。
@@ -472,11 +472,11 @@ Python AG-UI 适配层负责消息接收、调度提交和事件投影，不能�
 
 ### 8.6 全系统简体中文服务
 
-EasyOps 用户服务语言统一为 `zh-CN`，覆盖 React 工作台、CopilotKit 默认文案、对话回答、调查步骤、工具状态、候选选择、表单校验、空态、加载与重连、错误和超时、报告及导出、用户可见通知。不能只汉化导航，而让组件默认提示或后端错误仍直接显示英文。
+AIOpsStudio 用户服务语言统一为 `zh-CN`，覆盖 React 工作台、CopilotKit 默认文案、对话回答、调查步骤、工具状态、候选选择、表单校验、空态、加载与重连、错误和超时、报告及导出、用户可见通知。不能只汉化导航，而让组件默认提示或后端错误仍直接显示英文。
 
 前端使用统一中文文案资源并设置页面语言；后端返回稳定错误码、可理解的中文说明和必要的下一步。模型系统提示词、分析 Skill 和报告模板统一要求简体中文输出。机器字段、协议枚举与工具标识保持稳定，通过映射呈现中文状态，例如 `needs_input` 显示“待补充信息”，`partial` 显示“部分完成”。
 
-产品名、CI/服务名、API 路径、PromQL/LogQL、Trace ID、错误码及原始日志保留原文；中文解释与原始证据并列，不能为汉化改变查询或事实。源系统返回英文错误时，由平台提供中文说明并保留可展开的原始详情；对第三方原生页面的外链标明来源，语言验收范围为 EasyOps 自身服务及嵌入组件，不宣称外部产品已全部汉化。
+产品名、CI/服务名、API 路径、PromQL/LogQL、Trace ID、错误码及原始日志保留原文；中文解释与原始证据并列，不能为汉化改变查询或事实。源系统返回英文错误时，由平台提供中文说明并保留可展开的原始详情；对第三方原生页面的外链标明来源，语言验收范围为 AIOpsStudio 自身服务及嵌入组件，不宣称外部产品已全部汉化。
 
 用户可见时间明确使用 `Asia/Shanghai` 并标注时区，后端仍保存带时区时间及原始分析窗口。中文流式文本、输入法组合输入、长服务名和含英文证据的布局纳入真实浏览器验收。
 
@@ -503,7 +503,7 @@ MCP 工具试调创建独立持久任务并共享单执行槽，默认一个工�
 
 去重键优先使用来源事件 ID；无稳定事件 ID 时由来源实例、incident ID、事件类型、原始发生时间和稳定载荷摘要组成，明确该策略的边界。不能只按 incident ID 去重，否则会吞掉重复发生、重新打开或恢复事件。
 
-同一告警的重复通知可以关联到已有调查，新的故障时段建立新 attempt；恢复通知更新事件时间线，是否触发复核独立配置。EasyOps 不自动改告警状态。真实载荷字段、签名算法和重试行为须用所部署 Ongrid 的受控通知验证后固化。
+同一告警的重复通知可以关联到已有调查，新的故障时段建立新 attempt；恢复通知更新事件时间线，是否触发复核独立配置。AIOpsStudio 不自动改告警状态。真实载荷字段、签名算法和重试行为须用所部署 Ongrid 的受控通知验证后固化。
 
 ## 10. 实验数据与业务验收
 
@@ -553,7 +553,7 @@ MCP 工具试调创建独立持久任务并共享单执行槽，默认一个工�
 
 每轮固定代码、模型、Skill、MCP/schema、查询目录、数据源版本与实验时间；保留首答，不把修正后的结果回算成首次成功。记录影响对象的漏报/误报、关键事实与证据一致性、根因分级是否恰当、调用次数、耗时和模型用量；只报告实际样本内结果。
 
-可用 Ongrid 原有 RCA 作为对照，但两边需使用相同事件范围并记录各自实际可见数据、工具和模型差异。Ongrid 报告不作为标准答案，也不提前提供给 EasyOps。测试范围随改动影响确定，不以接口返回 200、容器健康或一次演示代替业务验收。
+可用 Ongrid 原有 RCA 作为对照，但两边需使用相同事件范围并记录各自实际可见数据、工具和模型差异。Ongrid 报告不作为标准答案，也不提前提供给 AIOpsStudio。测试范围随改动影响确定，不以接口返回 200、容器健康或一次演示代替业务验收。
 
 ## 11. Mac 本机部署与数据保护
 
@@ -561,26 +561,26 @@ MCP 工具试调创建独立持久任务并共享单执行槽，默认一个工�
 
 | 服务 | 首期职责 | 部署选择 |
 | --- | --- | --- |
-| `easyops-web` | React 静态产物、Node CopilotKit runtime、同源入口与 API/SSE 代理 | Mac Node 原生进程，仅回环监听；端口由外部部署配置决定 |
-| `easyops-app` | FastAPI、AG-UI、Deep Agents、配置管理、单执行槽与 API 工具 | Mac Python 原生进程；任务与证据统一管理，端口由外部部署配置决定 |
+| `aiopsstudio-web` | React 静态产物、Node CopilotKit runtime、同源入口与 API/SSE 代理 | Mac Node 原生进程，仅回环监听；端口由外部部署配置决定 |
+| `aiopsstudio-app` | FastAPI、AG-UI、Deep Agents、配置管理、单执行槽与 API 工具 | Mac Python 原生进程；任务与证据统一管理，端口由外部部署配置决定 |
 | `grafana-mcp` | 官方 Grafana MCP | 接入部署者提供的只读接口；需要隧道时显式外部配置，默认关闭 |
-| `easyops-db` | 任务、检查点、配置、凭据密文、变更记录与报告索引 | 独立 PostgreSQL；可使用专属 Docker 数据库或显式外部连接 |
+| `aiopsstudio-db` | 任务、检查点、配置、凭据密文、变更记录与报告索引 | 独立 PostgreSQL；可使用专属 Docker 数据库或显式外部连接 |
 | GLPI 应用与数据库 | 后续工单 UI 与 API | 当前不部署；后续如实施亦遵守 Mac 本机约束 |
 | 现有 CMDB MCP / Veops / Ongrid | 继续提供既有能力 | 复用原部署，不在本项目中重建 |
 
 当前首版采用 Mac 原生应用进程和独立 PostgreSQL。Skill 制品、证据、附件、日志与主密钥保存在仓库外的状态目录，具体参数见[应用 README](../../README.md)。Node 与 Python 执行器独立重启，Node 重启不得导致后台任务丢失或重复执行。
 
-EasyOps 及 GLPI 使用独立项目名、数据目录、数据库、凭据和日志；不复用示例调用链数据库作为平台数据库。Grafana 查询代理属于数据路径依赖，需用健康检查和真实查询分别检查连接与功能；资源占用在选定版本验证，不预先声明无成本或高可用。
+AIOpsStudio 及 GLPI 使用独立项目名、数据目录、数据库、凭据和日志；不复用示例调用链数据库作为平台数据库。Grafana 查询代理属于数据路径依赖，需用健康检查和真实查询分别检查连接与功能；资源占用在选定版本验证，不预先声明无成本或高可用。
 
 ### 11.2 资源与网络约束
 
-EasyOps 在 Mac 本机运行，仅回环地址开放；Mac 休眠或离线会影响应用与可选转发。外部数据源有独立可用性边界，逻辑副本数量不能作为物理隔离的证明。
+AIOpsStudio 在 Mac 本机运行，仅回环地址开放；Mac 休眠或离线会影响应用与可选转发。外部数据源有独立可用性边界，逻辑副本数量不能作为物理隔离的证明。
 
 核对本机资源并给数据库使用独立卷和限额，不调整其他项目容器或全局 Docker 配置。应用和测试在 Mac 上执行，只读访问外部 API，不向源端安装应用或测试探针。持久数据按配额控制增长，容量结论以实际验证为准。
 
 Grafana MCP 访问现有 Grafana，由 Grafana 访问遥测后端；Python 后端访问必要的 MCP、Ongrid API 与工单接口，页面不直连 Prometheus/Loki/Tempo。Node runtime 通过内部 AG-UI 入口访问 Python 后端，业务 REST/SSE 经同源代理；配置代理超时与关闭缓冲以支持长连接，并验证断开订阅不会取消任务。认证、TLS 和调用超时分别在各连接上配置。持久消息、证据和任务检查点拟默认保留 7 天，调查/Skill测试按 run 成组，独立工具/模型测试按测试任务及 Invocation 成组清理；运行中、人工保留或仍被有效报告引用的证据不自动删除。达到磁盘水位时拒绝所有需要留存的新调查和测试，不在证据无法保存时继续生成成功结果。配置历史按引用保留，不随调用过期误删。保留期与水位为实施前可调整参数。
 
-EasyOps 首期采用单租户运维账户和服务端会话；对话、AG-UI、任务、SSE、报告、证据下载与配置接口均校验身份和访问范围。凭据通过受认证管理接口录入，服务端加密保存、主密钥独立注入；已保存密钥不回显、不进入客户端持久存储或 Agent 上下文。配置发布、停用、轮换和试调记录作者及版本。MCP 使用独立服务身份；“只读”限制同时落实在工具注册、适配器请求方法及源端可提供的权限边界上。
+AIOpsStudio 首期采用单租户运维账户和服务端会话；对话、AG-UI、任务、SSE、报告、证据下载与配置接口均校验身份和访问范围。凭据通过受认证管理接口录入，服务端加密保存、主密钥独立注入；已保存密钥不回显、不进入客户端持久存储或 Agent 上下文。配置发布、停用、轮换和试调记录作者及版本。MCP 使用独立服务身份；“只读”限制同时落实在工具注册、适配器请求方法及源端可提供的权限边界上。
 
 仅做读取连接不要求改变现有采集管道、重启 Docker 或迁移节点。若实际接入必须改源系统配置，应作为独立变更列出对象和验证方法。
 
@@ -588,7 +588,7 @@ EasyOps 首期采用单租户运维账户和服务端会话；对话、AG-UI、�
 
 ### 12.1 原始设计阶段
 
-下表保留 v0.5 的设计分期，不表示全部退出条件已通过。首版之后的实施顺序按 [开发路线图](development-roadmap.md) 和 [总 Issue #1](https://github.com/john-ops-lab/EasyOps/issues/1) 跟踪；当前已实现及待验证边界见[交付状态](../status.md)。
+下表保留 v0.5 的设计分期，不表示全部退出条件已通过。首版之后的实施顺序按 [开发路线图](development-roadmap.md) 和 [总 Issue #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1) 跟踪；当前已实现及待验证边界见[交付状态](../status.md)。
 
 | 阶段 | 交付 | 退出条件 |
 | --- | --- | --- |
@@ -608,10 +608,10 @@ P2 的 E18 重点验证配置发布与恢复后版本引用不变；P4 的 E08 �
 
 | 本轮阶段 | 工作项与 GitHub Issue | 对应原设计 | 重点 |
 | --- | --- | --- | --- |
-| M1 可信分析与数据边界 | R01–R04 及 R07，[#2](https://github.com/john-ops-lab/EasyOps/issues/2)–[#5](https://github.com/john-ops-lab/EasyOps/issues/5)、[#8](https://github.com/john-ops-lab/EasyOps/issues/8) | P0/P1/P2 的分析验收 | 独立基线、对象/时间/覆盖、证据与资料补读、报告核对，以及前移的 R07 源授权和模型数据出站 |
-| M2 让工作台稳定好用 | R05/R06/R08/R09，[#6](https://github.com/john-ops-lab/EasyOps/issues/6)、[#7](https://github.com/john-ops-lab/EasyOps/issues/7)、[#9](https://github.com/john-ops-lab/EasyOps/issues/9)、[#10](https://github.com/john-ops-lab/EasyOps/issues/10) | P2 与 P4 的恢复部分 | 发布质量比较、管理组合、Chat/费用、历史/附件生命周期与一致恢复；R07 已前移 M1 |
-| M3 扩展分析场景 | R10–R12，[#11](https://github.com/john-ops-lab/EasyOps/issues/11)–[#13](https://github.com/john-ops-lab/EasyOps/issues/13) | P3 | 只读工单、变更影响、根因假设与人工裁决；核心根因流程可先于工单接入 |
-| M4 自动触发与显式协作 | R13，[#14](https://github.com/john-ops-lab/EasyOps/issues/14) | P4 的自动触发部分 | 事件链路、Case 显式共享/撤回与引用安全，前置 R04/R05/R06/R07/R08/R09；不必等待全部 M3 |
+| M1 可信分析与数据边界 | R01–R04 及 R07，[#2](https://github.com/john-ops-lab/AIOpsStudio/issues/2)–[#5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[#8](https://github.com/john-ops-lab/AIOpsStudio/issues/8) | P0/P1/P2 的分析验收 | 独立基线、对象/时间/覆盖、证据与资料补读、报告核对，以及前移的 R07 源授权和模型数据出站 |
+| M2 让工作台稳定好用 | R05/R06/R08/R09，[#6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[#7](https://github.com/john-ops-lab/AIOpsStudio/issues/7)、[#9](https://github.com/john-ops-lab/AIOpsStudio/issues/9)、[#10](https://github.com/john-ops-lab/AIOpsStudio/issues/10) | P2 与 P4 的恢复部分 | 发布质量比较、管理组合、Chat/费用、历史/附件生命周期与一致恢复；R07 已前移 M1 |
+| M3 扩展分析场景 | R10–R12，[#11](https://github.com/john-ops-lab/AIOpsStudio/issues/11)–[#13](https://github.com/john-ops-lab/AIOpsStudio/issues/13) | P3 | 只读工单、变更影响、根因假设与人工裁决；核心根因流程可先于工单接入 |
+| M4 自动触发与显式协作 | R13，[#14](https://github.com/john-ops-lab/AIOpsStudio/issues/14) | P4 的自动触发部分 | 事件链路、Case 显式共享/撤回与引用安全，前置 R04/R05/R06/R07/R08/R09；不必等待全部 M3 |
 
 先推进 R01 → R02，R03 与 R07 随后并行，R04 消费证据契约；M1 退出同时要求源权限与模型数据出站通过。R05 消费 R01/R03，R09 消费 R05/R07/R08，R13 消费 R04/R05/R06/R07/R08/R09。R10 的真实接入验收需 R07，合成 Provider 契约可先准备；其他工作按硬依赖推进，集成依赖在对应阶段退出时核对。R01 关闭只代表案例、评分与当前基线已建立，不代表现有实现通过全部未来能力。已有 Chat、管理、归属隔离与持久化由增量工作补齐，不重新建设。
 
@@ -630,7 +630,7 @@ P2 的 E18 重点验证配置发布与恢复后版本引用不变；P4 的 E08 �
 
 ## 13. 已定决策与实施前待核对项
 
-**已定架构：** EasyOps 采用 React + CopilotKit + Python Deep Agents，首版即支持边聊边调查、页面联动和全系统简体中文服务；AG-UI 连接交互层与 Agent，MCP 连接 Agent 与数据工具。根因及影响分析流程写入自有 Skill；现有 Veops CMDB MCP、官方 Grafana MCP、Ongrid HTTP API 分别提供配置关系、遥测和告警；GLPI 暂定工单系统并保留轻量 API 替代路径。首期不自研通用可观测 MCP，不新增告警 MCP Server，不以 Ongrid AI 调查代替 EasyOps 分析。
+**已定架构：** AIOpsStudio 采用 React + CopilotKit + Python Deep Agents，首版即支持边聊边调查、页面联动和全系统简体中文服务；AG-UI 连接交互层与 Agent，MCP 连接 Agent 与数据工具。根因及影响分析流程写入自有 Skill；现有 Veops CMDB MCP、官方 Grafana MCP、Ongrid HTTP API 分别提供配置关系、遥测和告警；GLPI 暂定工单系统并保留轻量 API 替代路径。首期不自研通用可观测 MCP，不新增告警 MCP Server，不以 Ongrid AI 调查代替 AIOpsStudio 分析。
 
 **新增已确认需求：** 工作台支持在线查看、调用和配置 Skill、MCP，纳入首版 P2 退出条件。版本发布/生效、依赖校验、试调、凭据及调用记录是配套方案；模型设置和运行概览已随 Mac 首版实现。实现不代替 E16～E21 全量组合验收，当前证据与缺口见交付状态。
 
@@ -663,7 +663,7 @@ P2 的 E18 重点验证配置发布与恢复后版本引用不变；P4 的 E08 �
 
 ### 官方参考
 
-- [Deep Agents SDK 与 MCP](https://docs.langchain.com/oss/python/deepagents/overview)、[Skill 加载](https://docs.langchain.com/oss/python/deepagents/skills)、[LangGraph 持久化](https://docs.langchain.com/oss/python/langgraph/persistence)：支撑执行底座、Skill与检查点选择；具体恢复策略由EasyOps实现。
+- [Deep Agents SDK 与 MCP](https://docs.langchain.com/oss/python/deepagents/overview)、[Skill 加载](https://docs.langchain.com/oss/python/deepagents/skills)、[LangGraph 持久化](https://docs.langchain.com/oss/python/langgraph/persistence)：支撑执行底座、Skill与检查点选择；具体恢复策略由AIOpsStudio实现。
 - [CopilotKit Deep Agents](https://docs.copilotkit.ai/deepagents)、[Python/Node 接入步骤](https://docs.copilotkit.ai/deepagents/quickstart)、[LangChain CopilotKit 集成](https://docs.langchain.com/oss/python/langchain/frontend/integrations/copilotkit)：支撑对话、AG-UI、共享状态与页面组件选型；官方示例不等于本项目自管任务、持久化和中文交互已经验收。
 - [GLPI 变更管理](https://help.glpi-project.org/tutorials/helpdesk/changes)、[GLPI REST API](https://help.glpi-project.org/documentation/modules/configuration/general/api/restful-api-v2)、[官方容器](https://github.com/glpi-project/docker-images)：支撑工单选型，实际字段与接口覆盖以选定版本为准。
 - [Ongrid 告警说明](https://ongrid.cloud/docs/capabilities/alerts)：架构参考；本项目工具接入以当前部署源码和实际API验证为准。
@@ -681,7 +681,7 @@ P2 的 E18 重点验证配置发布与恢复后版本引用不变；P4 的 E08 �
 | v0.2 | 2026-10-21 | 采用官方 Grafana MCP 与 Ongrid API；分析流程归属 Skill，补充 Ongrid 方法映射、反证/停止规则、接口限制，并同步架构、证据、部署及验收 |
 | v0.3 | 2026-10-21 | 确认 React + CopilotKit + Python Deep Agents，首版支持边聊边调查、页面联动及全系统简体中文；补齐 AG-UI/任务映射、消息与重连、Node 部署、开发阶段和 E12～E15 验收 |
 | v0.3 P0记录 | 2026-10-21 | 记录信号对照、工单暂缓及默认 runner 限制，选择自管消息入口；保留恢复和用户体验未验收边界 |
-| v0.4 | 2026-10-22 | 明确 CMDB 同步属于独立基础设施，来源同步结果不等于 EasyOps 应用验收 |
+| v0.4 | 2026-10-22 | 明确 CMDB 同步属于独立基础设施，来源同步结果不等于 AIOpsStudio 应用验收 |
 | v0.5 | 2026-10-22 | 首版加入 Skill/MCP 在线查看、调用和配置；补齐版本发布/生效、依赖校验、试调、模型设置和运行记录，新增管理设计及 E16～E21 |
 | v0.5 Mac部署决定 | 2026-10-22 | 明确应用、数据库与测试面向 Mac 本机，外部接口只读接入 |
 | v0.5 路线图登记 | 2026-10-23 | 同步一个总路线图、十三个实施 Issue 及 M1–M4 与原设计阶段的映射；仅规划登记，不代表新增能力已交付 |

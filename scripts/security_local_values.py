@@ -25,6 +25,21 @@ def json_value(source):
     return value
 
 
+def document_table(connection):
+    """Use one complete existing namespace; never initialize or guess a schema."""
+    namespaces = []
+    for prefix in ('aiopsstudio', 'easyops'):
+        present = [connection.execute('SELECT to_regclass(%s)', (prefix + '_' + suffix,)).fetchone()[0] is not None
+            for suffix in ('documents', 'events', 'worker_slot')]
+        if any(present):
+            if not all(present):
+                raise ValueError()
+            namespaces.append(prefix)
+    if len(namespaces) != 1:
+        raise ValueError()
+    return namespaces[0] + '_documents'
+
+
 def collect(profile, include_identifiers=True):
     values = set()
     def add(value):
@@ -57,7 +72,8 @@ def collect(profile, include_identifiers=True):
             options='-c default_transaction_read_only=on') as connection:
             if connection.execute('SHOW transaction_read_only').fetchone()[0] != 'on':
                 raise ValueError()
-            rows = connection.execute("SELECT kind,id,data FROM easyops_documents WHERE kind IN ('secret','user','session','model','mcp','skill')").fetchall()
+            table = document_table(connection)
+            rows = connection.execute(f"SELECT kind,id,data FROM {table} WHERE kind IN ('secret','user','session','model','mcp','skill')").fetchall()
             for kind, identifier, data in rows:
                 if include_identifiers and re.fullmatch(r'[a-z]+_[0-9a-f]{16,}', identifier):
                     add(identifier)

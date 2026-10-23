@@ -11,10 +11,10 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
-from easyops.main import create_app
-from easyops.runtime import configure_runtime
-from easyops.store import Store
-from easyops.attachments import FILE_LIMIT, USER_LIMIT
+from aiopsstudio.main import create_app
+from aiopsstudio.runtime import configure_runtime
+from aiopsstudio.store import Store
+from aiopsstudio.attachments import FILE_LIMIT, USER_LIMIT
 
 ADMIN_PASSWORD = "admin-test-password-long"
 USER_PASSWORD = "operator-test-password-long"
@@ -250,7 +250,7 @@ def test_old_session_admin_history_and_actual_request_limit(chat):
     key = hashlib.sha256(token.encode()).hexdigest()
     chat.store.save("session", key, {"user": "admin", "expires_at": time.time() + 120})
     legacy = TestClient(chat.app, headers=ORIGIN)
-    legacy.cookies.set("easyops_session", token)
+    legacy.cookies.set("aiopsstudio_session", token)
     assert legacy.get("/api/session").json()["user"]["id"] == "admin"
     chat.store.save("run", "legacy-ownerless", {"thread_id": "legacy", "status": "failed", "created_at": "2026-10-22", "messages": []})
     assert legacy.get("/api/runs/legacy-ownerless").status_code == 200

@@ -1,4 +1,4 @@
-# EasyOps 工作台前端
+# AIOpsStudio 工作台前端
 
 React/Vite 界面使用简体中文；依赖版本以锁文件为准。`server.mjs` 提供同源入口，Python API、PostgreSQL 和执行器在 Mac 本机运行。
 
@@ -13,8 +13,10 @@ npm start
 部署参数、状态目录与启动顺序见[仓库 README](../README.md)。开发时先启动同源 Node 入口，再将 Vite API 代理指向它；下例使用通用默认端口：
 
 ```sh
-EASYOPS_API_URL=http://127.0.0.1:3000 npm run dev
+AIOPSSTUDIO_API_URL=http://127.0.0.1:3000 npm run dev
 ```
+
+Node 和 Vite 通过同一个 `environment.mjs` 读取上游地址。主变量为 `AIOPSSTUDIO_API_URL`；旧前缀仅作服务端兼容，新旧值冲突时启动失败。
 
 浏览器通过 `/api` 获取数据，凭据由后端保存。开发代理应指向 Node 同源入口。
 

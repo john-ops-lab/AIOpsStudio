@@ -1,10 +1,12 @@
-# EasyOps 完整设计（最新整合版）
+# AIOpsStudio 完整设计（最新整合版）
 
 更新日期：2026-10-23，Asia/Shanghai。
 
+名称修订：产品与 GitHub 仓库统一为 **AIOpsStudio**，Python 包为 `aiopsstudio`，环境变量主前缀为 `AIOPSSTUDIO_`；完整设计文件已更名为本文。此次更名沿用原架构、E01–E21 验收和 R01–R13 工作包，不改变功能完成状态。
+
 整合基线：源码与主规格提交 `dda65118f00531fba5b495b0ec34a07d82372a64`；架构源自 v0.5，纳入最新 R01–R13 研究缺口修订。本日期表示文档更新，不代表应用新版本、重新部署或重新完成业务验收。
 
-本文是完整设计的统一阅读入口，整合产品、架构、交互、管理、数据、执行、分析方法、安全、部署、验收和开发工作包。原四份文档保留来源记录和既有链接，后续设计修订优先维护本文。当前可执行契约仍以 [OpenSpec 主规格](../../openspec/specs/)为准；待开发目标须通过各自实现 change 才能成为现有能力。历史结果见[交付状态](../status.md)，本次整合不新增应用验证结论。
+本文是完整设计的统一阅读入口，整合产品、架构、交互、管理、数据、执行、分析方法、安全、部署、验收和开发工作包。原四份文档保留来源记录，文内引用随品牌更名更新，后续设计修订优先维护本文。当前可执行契约仍以 [OpenSpec 主规格](../../openspec/specs/)为准；待开发目标须通过各自实现 change 才能成为现有能力。历史结果见[交付状态](../status.md)，本次整合不新增应用验证结论。
 
 ## 阅读目录
 
@@ -27,7 +29,7 @@
 
 ## 1. 产品目标与边界
 
-EasyOps 是面向已有监控和 CMDB 的、中文优先、可自主部署的只读运维分析工作台。用户在同一工作空间提问、选择目标/告警和时间窗、调用已发布 Skill、查看报告与证据，并管理 Skill、MCP 和模型配置。主入口统一叫“运维工作台”，用户流程统一叫“分析”；内部已有 `investigation` 等标识保持兼容。
+AIOpsStudio 是面向已有监控和 CMDB 的、中文优先、可自主部署的只读运维分析工作台。用户在同一工作空间提问、选择目标/告警和时间窗、调用已发布 Skill、查看报告与证据，并管理 Skill、MCP 和模型配置。主入口统一叫“运维工作台”，用户流程统一叫“分析”；内部已有 `investigation` 等标识保持兼容。
 
 | 业务场景 | 用户输入 | 目标结果 | 当前阶段 |
 | --- | --- | --- | --- |
@@ -69,7 +71,7 @@ EasyOps 是面向已有监控和 CMDB 的、中文优先、可自主部署的只
 
 公开 Chat 验证曾记录后端 84 项、PostgreSQL HTTP 16/16、浏览器/服务端联合 19/19，以及两轮真实外部模型 `partial` 报告。最初超时、模型报告失败、阅读视图漏尾部/漏序列及缩写引用等首败均保留，后来的通过不覆盖这些失败。此前其他检查的计数各有范围，不能叠加成根因准确率。
 
-本文整合只做静态实现/规格核对和文档验证，没有重新执行这些应用测试，没有调用模型或源系统。代码机制、协议通过、实际查询、分析正确、完整业务覆盖、部署可用和用户接受分别记录；目前用户接受仍不能代称全部通过。
+首次文档整合只做静态实现/规格核对和文档验证，没有重新执行这些应用测试，没有调用模型或源系统。代码机制、协议通过、实际查询、分析正确、完整业务覆盖、部署可用和用户接受分别记录；目前用户接受仍不能代称全部通过。本次品牌变更另行记录检查，不改变上述历史结果及各功能的完成状态。
 
 ## 3. 架构与实际请求路径
 
@@ -156,7 +158,7 @@ client_message_id/client_request_id 的幂等作用域包含可信用户及相�
 
 ### 6.1 Skill：已有基础与待补齐
 
-已实现 Skill 草稿、正文和文本 references、输入 schema、工具依赖、校验、发布版本查看、回退、停用与试运行。内容标准使用 SKILL.md，EasyOps 自有输入/预算/依赖配置与标准内容分别保存。allowed-tools 或正文要求不能授予权限；只读工具范围由平台确定。
+已实现 Skill 草稿、正文和文本 references、输入 schema、工具依赖、校验、发布版本查看、回退、停用与试运行。内容标准使用 SKILL.md，AIOpsStudio 自有输入/预算/依赖配置与标准内容分别保存。allowed-tools 或正文要求不能授予权限；只读工具范围由平台确定。
 
 所选 Skill 正文确定性进入当前 attempt；当前装载所选正文及其 references 和固定通用 CMDB 方法，不是加载整个 Skill 库。仅方法文本和平台注册工具可执行，不自动安装或执行包中脚本、任意代码或依赖。版本差异比较、包导入、frontmatter、相对引用、文件数/大小、越界/符号链接及脚本兼容性属于 R05 的完整组合验收，不能把内容保存成功等同安全导入任意包。
 
@@ -383,7 +385,13 @@ Store 已有主键、精确 get 和事件游标，不能说无索引/无分页�
 
 Node 同源 Web、Python API/执行器、独立 PostgreSQL 和状态/制品目录部署在 Mac；官方 Grafana MCP 等源服务位置由部署者配置，不把历史预研容器位置当当前默认部署。正式工作台要求 PostgreSQL，隔离单测可用 SQLite。PostgreSQL 同时承担初期队列，不额外依赖 Redis/RabbitMQ。
 
-`deploy/local.py` 管理本应用进程和独立数据库/卷，部署 JSON、EASYOPS_STATE_DIR、EASYOPS_DEPLOY_CONFIG、EASYOPS_DATABASE_URL 等外置，默认仅回环绑定，SSH 转发默认关闭。实际端口、证书、模型、源地址及身份映射不写入公开设计；通用安装入口见[仓库 README](../../README.md)。首次独立口令和主密钥保留已有文件，启动/停止不清空历史；当前没有随 Mac 登录/重启自动恢复进程的承诺。
+`deploy/local.py` 管理本应用进程和独立数据库/卷，部署 JSON、AIOPSSTUDIO_STATE_DIR、AIOPSSTUDIO_DEPLOY_CONFIG、AIOPSSTUDIO_DATABASE_URL 等外置，默认仅回环绑定，SSH 转发默认关闭。实际端口、证书、模型、源地址及身份映射不写入公开设计；通用安装入口见[仓库 README](../../README.md)。首次独立口令和主密钥保留已有文件，启动/停止不清空历史；当前没有随 Mac 登录/重启自动恢复进程的承诺。
+
+全新安装使用 `~/.local/share/aiopsstudio` 状态目录，以及 `aiopsstudio-db` 容器、`aiopsstudio-db-data` 卷和 `aiopsstudio` 库/用户默认名。更名不自动迁移已有状态、数据库、附件或凭据；未显式指定状态目录时只读识别唯一的当前或旧版目录，多个并存则拒绝并要求显式选择。已有安装的端口、连接与其他部署参数仍由仓库外提供，主密钥必须匹配原数据。旧环境变量前缀仅由后端和 Node 配置边界兼容，新旧同项不同值拒绝启动。CopilotKit 的 Provider 和 Node agent 注册名统一为 `aiopsstudio`；隔离验证不能替代原实例升级验收。
+
+自定义状态目录仅使用新配置键时，必须显式提供 `AIOPSSTUDIO_DATABASE_URL` 或部署 JSON 的 `database.container/volume/user/name` 四项，首次与后续启动规则一致。保留旧 `STATE_DIR`（同值新键可共存）时继续选择旧默认资产；不读取私有文件来猜测数据库身份。
+
+当前兼容边界包括：数据库完整旧表继续复用，新旧表混用或不完整时拒绝初始化；数据库容器/卷须有匹配状态目录的归属标签，缺标签不能自动接管，可显式作为外部数据库连接。有效旧 Cookie 升级为当前 Cookie，不能超过原会话到期时间或创建后 12 小时；新旧 Cookie 值冲突时清除并要求重新登录。以上是有界更名兼容，不代表 R08/R09 的完整数据迁移、恢复或生命周期验收已经完成。
 
 开发和测试不部署到外部源，不重启或迁移既有系统。实验数据准备与故障注入独立授权且限于指定对象，不能由分析工具执行。普通用户只看到工作空间身份，部署主机属于管理员配置。
 
@@ -437,15 +445,15 @@ R05 消费 R01 建正式发布门槛，不能反向要求所有 R11/R12 先完�
 
 接口正确（固定源、对象、窗口与原 API/MCP 对照）、联合业务分析、持久任务/证据、真实浏览器可用性、配置生命周期分别验收；发布安全 CI 与业务验收分开，用户接受单独记录。任何外部 AI 报告只作同范围对照，不能提前供给被测 Agent 或当作标准答案。
 
-公开提交检查代码、文案、日志/导出、图片与 Git 历史中的凭据和现场信息，真实配置、历史、附件、原始证据及映射留仓库外。按 [安全门禁](../../security/README.md)正常运行暂存树/推送历史检查，不绕过钩子；新图片须独立目视/OCR/元数据复核。本次没有新增图片，原通用演示图不代表实际验收截图。
+公开提交检查代码、文案、日志/导出、图片与 Git 历史中的凭据和现场信息，真实配置、历史、附件、原始证据及映射留仓库外。按 [安全门禁](../../security/README.md)正常运行暂存树/推送历史检查，不绕过钩子；新图片须独立目视/OCR/元数据复核。首次文档整合未新增图片；品牌更名更新的通用图片按独立记录复核，均不代表实际验收截图。
 
 ### 14.4 代码与规格依据
 
-当前实现依据集中于 [identity.py](../../backend/easyops/identity.py)、[conversations.py](../../backend/easyops/conversations.py)、[attachments.py](../../backend/easyops/attachments.py)、[config.py](../../backend/easyops/config.py)、[connectors.py](../../backend/easyops/connectors.py)、[runtime.py](../../backend/easyops/runtime.py)、[store.py](../../backend/easyops/store.py)、[Vault 实现](../../backend/easyops/config.py)、[Workbench.tsx](../../web/src/pages/Workbench.tsx)、[AnalysisCanvas.tsx](../../web/src/components/workbench/AnalysisCanvas.tsx)、[Node 同源服务](../../web/server.mjs)与[主规格](../../openspec/specs/)。基线代码存在不代表所有验收已完成，本节不执行应用或真实调用。
+当前实现依据集中于 [identity.py](../../backend/aiopsstudio/identity.py)、[conversations.py](../../backend/aiopsstudio/conversations.py)、[attachments.py](../../backend/aiopsstudio/attachments.py)、[config.py](../../backend/aiopsstudio/config.py)、[connectors.py](../../backend/aiopsstudio/connectors.py)、[runtime.py](../../backend/aiopsstudio/runtime.py)、[store.py](../../backend/aiopsstudio/store.py)、[Vault 实现](../../backend/aiopsstudio/config.py)、[Workbench.tsx](../../web/src/pages/Workbench.tsx)、[AnalysisCanvas.tsx](../../web/src/components/workbench/AnalysisCanvas.tsx)、[Node 同源服务](../../web/server.mjs)与[主规格](../../openspec/specs/)。基线代码存在不代表所有验收已完成，本节不执行应用或真实调用。
 
 ## 15. 开发阶段、依赖与工作包
 
-本节保留已经确认的一个总路线图和十三个实施 Issue。所有十三项在本次整合时均为 open/待实施；个别工作包复用已实现能力，不意味着其整个新增范围已经完成。阶段为 M1/M2/M3/M4＝5/4/3/1，不是新产品版本或日历承诺。GitHub 实时进展见[总路线图 #1](https://github.com/john-ops-lab/EasyOps/issues/1)。
+本节保留已经确认的一个总路线图和十三个实施 Issue。所有十三项在本次整合时均为 open/待实施；个别工作包复用已实现能力，不意味着其整个新增范围已经完成。阶段为 M1/M2/M3/M4＝5/4/3/1，不是新产品版本或日历承诺。GitHub 实时进展见[总路线图 #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1)。
 
 ### 15.1 阶段与退出条件
 
@@ -458,37 +466,37 @@ R05 消费 R01 建正式发布门槛，不能反向要求所有 R11/R12 先完�
 
 ### 15.2 实施清单
 
-- [ ] [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2) 建立分析案例与验收基线（M1）
-- [ ] [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3) 统一对象身份、时间窗和数据覆盖规则（M1）
-- [ ] [R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4) 支持证据定向重读与分页（M1）
-- [ ] [R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5) 完善告警影响报告与证据核对（M1）
-- [ ] [R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6) 补齐 Skill/MCP/模型管理组合验收（M2）
-- [ ] [R06 · #7](https://github.com/john-ops-lab/EasyOps/issues/7) 完善长流程 Chat 与证据导航（M2）
-- [ ] [R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8) 明确数据源权限与模型数据出站规则（M1）
-- [ ] [R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9) 完善历史与附件生命周期（M2）
-- [ ] [R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10) 完成执行中断与恢复机制验收（M2）
-- [ ] [R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11) 接入只读故障与变更工单（M3）
-- [ ] [R11 · #12](https://github.com/john-ops-lab/EasyOps/issues/12) 实现变更影响分析 Skill（M3）
-- [ ] [R12 · #13](https://github.com/john-ops-lab/EasyOps/issues/13) 实现根因假设与验证流程（M3）
-- [ ] [R13 · #14](https://github.com/john-ops-lab/EasyOps/issues/14) 实现告警自动接收与分析（M4）
+- [ ] [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2) 建立分析案例与验收基线（M1）
+- [ ] [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3) 统一对象身份、时间窗和数据覆盖规则（M1）
+- [ ] [R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4) 支持证据定向重读与分页（M1）
+- [ ] [R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5) 完善告警影响报告与证据核对（M1）
+- [ ] [R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6) 补齐 Skill/MCP/模型管理组合验收（M2）
+- [ ] [R06 · #7](https://github.com/john-ops-lab/AIOpsStudio/issues/7) 完善长流程 Chat 与证据导航（M2）
+- [ ] [R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8) 明确数据源权限与模型数据出站规则（M1）
+- [ ] [R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9) 完善历史与附件生命周期（M2）
+- [ ] [R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10) 完成执行中断与恢复机制验收（M2）
+- [ ] [R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11) 接入只读故障与变更工单（M3）
+- [ ] [R11 · #12](https://github.com/john-ops-lab/AIOpsStudio/issues/12) 实现变更影响分析 Skill（M3）
+- [ ] [R12 · #13](https://github.com/john-ops-lab/AIOpsStudio/issues/13) 实现根因假设与验证流程（M3）
+- [ ] [R13 · #14](https://github.com/john-ops-lab/AIOpsStudio/issues/14) 实现告警自动接收与分析（M4）
 
 ### 15.3 依赖与并行安排
 
 | 工作项 | 硬依赖 | 集成依赖 |
 | --- | --- | --- |
-| [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2) | 无 | 无 |
-| [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3) | [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2) | 无 |
-| [R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3) | 无 |
-| [R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4) | 无 |
-| [R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6) | [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2)、[R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4) | [R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8) |
-| [R06 · #7](https://github.com/john-ops-lab/EasyOps/issues/7) | [R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5) | [R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10) |
-| [R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3) | 无 |
-| [R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9) | [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2) | 无 |
-| [R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10) | [R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)、[R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9) | 无 |
-| [R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8) | 无 |
-| [R11 · #12](https://github.com/john-ops-lab/EasyOps/issues/12) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11) | 无 |
-| [R12 · #13](https://github.com/john-ops-lab/EasyOps/issues/13) | [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6) | [R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11) |
-| [R13 · #14](https://github.com/john-ops-lab/EasyOps/issues/14) | [R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R06 · #7](https://github.com/john-ops-lab/EasyOps/issues/7)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)、[R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9)、[R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10) | 无 |
+| [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2) | 无 | 无 |
+| [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3) | [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2) | 无 |
+| [R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3) | 无 |
+| [R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4) | 无 |
+| [R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6) | [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2)、[R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4) | [R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8) |
+| [R06 · #7](https://github.com/john-ops-lab/AIOpsStudio/issues/7) | [R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5) | [R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10) |
+| [R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3) | 无 |
+| [R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9) | [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2) | 无 |
+| [R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10) | [R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)、[R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9) | 无 |
+| [R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8) | 无 |
+| [R11 · #12](https://github.com/john-ops-lab/AIOpsStudio/issues/12) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11) | 无 |
+| [R12 · #13](https://github.com/john-ops-lab/AIOpsStudio/issues/13) | [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6) | [R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11) |
+| [R13 · #14](https://github.com/john-ops-lab/AIOpsStudio/issues/14) | [R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R06 · #7](https://github.com/john-ops-lab/AIOpsStudio/issues/7)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)、[R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9)、[R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10) | 无 |
 
 硬依赖定义必需契约与验收输入；集成依赖不阻塞独立部分开发，但关联联合场景必须在阶段退出前核对，不能据此宣称组合已通过。
 
@@ -538,9 +546,9 @@ R05 消费 R01 建正式发布门槛，不能反向要求所有 R11/R12 先完�
 
 #### R01 建立分析案例与验收基线
 
-Issue：[[R01][M1] 建立分析案例与验收基线](https://github.com/john-ops-lab/EasyOps/issues/2) · 阶段：M1 · 建议 OpenSpec：`establish-analysis-baseline`。
+Issue：[[R01][M1] 建立分析案例与验收基线](https://github.com/john-ops-lab/AIOpsStudio/issues/2) · 阶段：M1 · 建议 OpenSpec：`establish-analysis-baseline`。
 
-**目标：** 建立独立、可重复的分析验收方法，先知道答案应是什么，再衡量 EasyOps 是否答对。
+**目标：** 建立独立、可重复的分析验收方法，先知道答案应是什么，再衡量 AIOpsStudio 是否答对。
 
 **已有基础：** 已有历史协议测试和少量业务核对；尚不能据此推断全部数据覆盖、业务影响或根因正确。
 
@@ -578,7 +586,7 @@ Issue：[[R01][M1] 建立分析案例与验收基线](https://github.com/john-op
 
 #### R02 统一对象身份、时间窗和数据覆盖规则
 
-Issue：[[R02][M1] 统一对象身份、时间窗和数据覆盖规则](https://github.com/john-ops-lab/EasyOps/issues/3) · 阶段：M1 · 建议 OpenSpec：`unify-analysis-context`。
+Issue：[[R02][M1] 统一对象身份、时间窗和数据覆盖规则](https://github.com/john-ops-lab/AIOpsStudio/issues/3) · 阶段：M1 · 建议 OpenSpec：`unify-analysis-context`。
 
 **目标：** 让不同数据源围绕同一个对象、同一段时间回答，避免查错对象或把没查到当成没有问题。
 
@@ -586,7 +594,7 @@ Issue：[[R02][M1] 统一对象身份、时间窗和数据覆盖规则](https://
 
 **依赖：**
 
-硬依赖 [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -612,7 +620,7 @@ Issue：[[R02][M1] 统一对象身份、时间窗和数据覆盖规则](https://
 
 #### R03 支持证据定向重读与分页
 
-Issue：[[R03][M1] 支持证据定向重读与分页](https://github.com/john-ops-lab/EasyOps/issues/4) · 阶段：M1 · 建议 OpenSpec：`add-targeted-evidence-reading`。
+Issue：[[R03][M1] 支持证据定向重读与分页](https://github.com/john-ops-lab/AIOpsStudio/issues/4) · 阶段：M1 · 建议 OpenSpec：`add-targeted-evidence-reading`。
 
 **目标：** 当首次摘要看不全时，让 Agent 可以准确补读原始证据，避免遗漏尾部回落、其他序列或关键字段。
 
@@ -620,7 +628,7 @@ Issue：[[R03][M1] 支持证据定向重读与分页](https://github.com/john-op
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -651,7 +659,7 @@ Issue：[[R03][M1] 支持证据定向重读与分页](https://github.com/john-op
 
 #### R04 完善告警影响报告与证据核对
 
-Issue：[[R04][M1] 完善告警影响报告与证据核对](https://github.com/john-ops-lab/EasyOps/issues/5) · 阶段：M1 · 建议 OpenSpec：`ground-alert-impact-reports`。
+Issue：[[R04][M1] 完善告警影响报告与证据核对](https://github.com/john-ops-lab/AIOpsStudio/issues/5) · 阶段：M1 · 建议 OpenSpec：`ground-alert-impact-reports`。
 
 **目标：** 使报告的重要结论能逐条对证据，并清楚区分潜在影响、实际观测和仍未确认的内容。
 
@@ -659,7 +667,7 @@ Issue：[[R04][M1] 完善告警影响报告与证据核对](https://github.com/j
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -689,7 +697,7 @@ Issue：[[R04][M1] 完善告警影响报告与证据核对](https://github.com/j
 
 #### R05 补齐 Skill/MCP/模型管理组合验收
 
-Issue：[[R05][M2] 补齐 Skill/MCP/模型管理组合验收](https://github.com/john-ops-lab/EasyOps/issues/6) · 阶段：M2 · 建议 OpenSpec：`complete-management-acceptance`。
+Issue：[[R05][M2] 补齐 Skill/MCP/模型管理组合验收](https://github.com/john-ops-lab/AIOpsStudio/issues/6) · 阶段：M2 · 建议 OpenSpec：`complete-management-acceptance`。
 
 **目标：** 让在线配置从编辑、试调到正式运行的全流程可预测，配置变更不会悄悄影响正在进行的分析。
 
@@ -697,9 +705,9 @@ Issue：[[R05][M2] 补齐 Skill/MCP/模型管理组合验收](https://github.com
 
 **依赖：**
 
-硬依赖 [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2)、[R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2)、[R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)；相关契约和验收就绪后进入本项集成验收。
 
-集成依赖 [R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)；独立部分可先开发，联合场景在对应阶段退出前核对。
+集成依赖 [R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)；独立部分可先开发，联合场景在对应阶段退出前核对。
 
 **开发优先级：** 第二优先；queue_limit 小修可先准备，正式闭项仍须完成回放比较、固定资料版本及 R07 联合验收。
 
@@ -732,7 +740,7 @@ Issue：[[R05][M2] 补齐 Skill/MCP/模型管理组合验收](https://github.com
 
 #### R06 完善长流程 Chat 与证据导航
 
-Issue：[[R06][M2] 完善长流程 Chat 与证据导航](https://github.com/john-ops-lab/EasyOps/issues/7) · 阶段：M2 · 建议 OpenSpec：`improve-long-running-chat`。
+Issue：[[R06][M2] 完善长流程 Chat 与证据导航](https://github.com/john-ops-lab/AIOpsStudio/issues/7) · 阶段：M2 · 建议 OpenSpec：`improve-long-running-chat`。
 
 **目标：** 用户在分析过程中能继续沟通、看懂进度，并从长报告直接找到对应证据。
 
@@ -740,9 +748,9 @@ Issue：[[R06][M2] 完善长流程 Chat 与证据导航](https://github.com/john
 
 **依赖：**
 
-硬依赖 [R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)；相关契约和验收就绪后进入本项集成验收。
 
-集成依赖 [R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10)；可先交付独立部分，联合场景就绪后补齐并在阶段退出时核对。
+集成依赖 [R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10)；可先交付独立部分，联合场景就绪后补齐并在阶段退出时核对。
 
 **开发优先级：** 第二优先；复用证据/报告契约改善交互与费用展示；Case 和人工裁决入口随 R13/R12 联合交付。
 
@@ -774,7 +782,7 @@ Issue：[[R06][M2] 完善长流程 Chat 与证据导航](https://github.com/john
 
 #### R07 明确数据源权限与模型数据出站规则
 
-Issue：[[R07][M1] 明确数据源权限与模型数据出站规则](https://github.com/john-ops-lab/EasyOps/issues/8) · 阶段：M1 · 建议 OpenSpec：`enforce-source-access-scope`。
+Issue：[[R07][M1] 明确数据源权限与模型数据出站规则](https://github.com/john-ops-lab/AIOpsStudio/issues/8) · 阶段：M1 · 建议 OpenSpec：`enforce-source-access-scope`。
 
 **目标：** 用户只能分析获准访问的数据源与对象，并按明确规则控制发送给模型的业务数据；平台共享服务身份不能绕过用户权限。
 
@@ -782,7 +790,7 @@ Issue：[[R07][M1] 明确数据源权限与模型数据出站规则](https://git
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -817,7 +825,7 @@ Issue：[[R07][M1] 明确数据源权限与模型数据出站规则](https://git
 
 #### R08 完善历史与附件生命周期
 
-Issue：[[R08][M2] 完善历史与附件生命周期](https://github.com/john-ops-lab/EasyOps/issues/9) · 阶段：M2 · 建议 OpenSpec：`manage-history-attachment-lifecycle`。
+Issue：[[R08][M2] 完善历史与附件生命周期](https://github.com/john-ops-lab/AIOpsStudio/issues/9) · 阶段：M2 · 建议 OpenSpec：`manage-history-attachment-lifecycle`。
 
 **目标：** 对话和附件长期保存在服务端，同时能按用户管理容量、归档和删除，避免误清理有用证据。
 
@@ -825,7 +833,7 @@ Issue：[[R08][M2] 完善历史与附件生命周期](https://github.com/john-op
 
 **依赖：**
 
-硬依赖 [R01 · #2](https://github.com/john-ops-lab/EasyOps/issues/2)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R01 · #2](https://github.com/john-ops-lab/AIOpsStudio/issues/2)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -859,7 +867,7 @@ Issue：[[R08][M2] 完善历史与附件生命周期](https://github.com/john-op
 
 #### R09 完成执行中断与恢复机制验收
 
-Issue：[[R09][M2] 完成执行中断与恢复机制验收](https://github.com/john-ops-lab/EasyOps/issues/10) · 阶段：M2 · 建议 OpenSpec：`verify-execution-recovery`。
+Issue：[[R09][M2] 完成执行中断与恢复机制验收](https://github.com/john-ops-lab/AIOpsStudio/issues/10) · 阶段：M2 · 建议 OpenSpec：`verify-execution-recovery`。
 
 **目标：** 进程中断后每个任务有明确归宿，重试或恢复不会重复写报告、偷换配置或突破权限与预算。
 
@@ -867,7 +875,7 @@ Issue：[[R09][M2] 完成执行中断与恢复机制验收](https://github.com/j
 
 **依赖：**
 
-硬依赖 [R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)、[R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)、[R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -899,7 +907,7 @@ Issue：[[R09][M2] 完成执行中断与恢复机制验收](https://github.com/j
 
 #### R10 接入只读故障与变更工单
 
-Issue：[[R10][M3] 接入只读故障与变更工单](https://github.com/john-ops-lab/EasyOps/issues/11) · 阶段：M3 · 建议 OpenSpec：`integrate-readonly-tickets`。
+Issue：[[R10][M3] 接入只读故障与变更工单](https://github.com/john-ops-lab/AIOpsStudio/issues/11) · 阶段：M3 · 建议 OpenSpec：`integrate-readonly-tickets`。
 
 **目标：** 让分析能读取故障和变更记录，并准确理解工单状态、实际执行时间与缺失字段。
 
@@ -907,7 +915,7 @@ Issue：[[R10][M3] 接入只读故障与变更工单](https://github.com/john-op
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -933,7 +941,7 @@ Issue：[[R10][M3] 接入只读故障与变更工单](https://github.com/john-op
 
 #### R11 实现变更影响分析 Skill
 
-Issue：[[R11][M3] 实现变更影响分析 Skill](https://github.com/john-ops-lab/EasyOps/issues/12) · 阶段：M3 · 建议 OpenSpec：`add-change-impact-analysis`。
+Issue：[[R11][M3] 实现变更影响分析 Skill](https://github.com/john-ops-lab/AIOpsStudio/issues/12) · 阶段：M3 · 建议 OpenSpec：`add-change-impact-analysis`。
 
 **目标：** 把计划变更的潜在风险和已执行变更的观测结果分开分析，为人工决策提供证据。
 
@@ -941,7 +949,7 @@ Issue：[[R11][M3] 实现变更影响分析 Skill](https://github.com/john-ops-l
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -967,7 +975,7 @@ Issue：[[R11][M3] 实现变更影响分析 Skill](https://github.com/john-ops-l
 
 #### R12 实现根因假设与验证流程
 
-Issue：[[R12][M3] 实现根因假设与验证流程](https://github.com/john-ops-lab/EasyOps/issues/13) · 阶段：M3 · 建议 OpenSpec：`add-root-cause-validation`。
+Issue：[[R12][M3] 实现根因假设与验证流程](https://github.com/john-ops-lab/AIOpsStudio/issues/13) · 阶段：M3 · 建议 OpenSpec：`add-root-cause-validation`。
 
 **目标：** 围绕多个候选原因逐项查证，允许最后仍然不知道，避免给出没有证据的确定根因。
 
@@ -975,9 +983,9 @@ Issue：[[R12][M3] 实现根因假设与验证流程](https://github.com/john-op
 
 **依赖：**
 
-硬依赖 [R02 · #3](https://github.com/john-ops-lab/EasyOps/issues/3)、[R03 · #4](https://github.com/john-ops-lab/EasyOps/issues/4)、[R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R02 · #3](https://github.com/john-ops-lab/AIOpsStudio/issues/3)、[R03 · #4](https://github.com/john-ops-lab/AIOpsStudio/issues/4)、[R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)；相关契约和验收就绪后进入本项集成验收。
 
-集成依赖 [R10 · #11](https://github.com/john-ops-lab/EasyOps/issues/11)；可先交付独立部分，联合场景就绪后补齐并在阶段退出时核对。
+集成依赖 [R10 · #11](https://github.com/john-ops-lab/AIOpsStudio/issues/11)；可先交付独立部分，联合场景就绪后补齐并在阶段退出时核对。
 
 **开发优先级：** 第三优先；与工单/变更扩展并行；人工裁决锚定报告版本，不等待 R13 Case 或经验库。
 
@@ -1007,7 +1015,7 @@ Issue：[[R12][M3] 实现根因假设与验证流程](https://github.com/john-op
 
 #### R13 实现告警自动接收与分析
 
-Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-ops-lab/EasyOps/issues/14) · 阶段：M4 · 建议 OpenSpec：`add-alert-triggered-analysis`。
+Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-ops-lab/AIOpsStudio/issues/14) · 阶段：M4 · 建议 OpenSpec：`add-alert-triggered-analysis`。
 
 **目标：** 让经过验证的告警事件可靠进入分析队列，重复通知和恢复事件不会造成重复分析或混乱历史。
 
@@ -1015,7 +1023,7 @@ Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-op
 
 **依赖：**
 
-硬依赖 [R04 · #5](https://github.com/john-ops-lab/EasyOps/issues/5)、[R05 · #6](https://github.com/john-ops-lab/EasyOps/issues/6)、[R06 · #7](https://github.com/john-ops-lab/EasyOps/issues/7)、[R07 · #8](https://github.com/john-ops-lab/EasyOps/issues/8)、[R08 · #9](https://github.com/john-ops-lab/EasyOps/issues/9)、[R09 · #10](https://github.com/john-ops-lab/EasyOps/issues/10)；相关契约和验收就绪后进入本项集成验收。
+硬依赖 [R04 · #5](https://github.com/john-ops-lab/AIOpsStudio/issues/5)、[R05 · #6](https://github.com/john-ops-lab/AIOpsStudio/issues/6)、[R06 · #7](https://github.com/john-ops-lab/AIOpsStudio/issues/7)、[R07 · #8](https://github.com/john-ops-lab/AIOpsStudio/issues/8)、[R08 · #9](https://github.com/john-ops-lab/AIOpsStudio/issues/9)、[R09 · #10](https://github.com/john-ops-lab/AIOpsStudio/issues/10)；相关契约和验收就绪后进入本项集成验收。
 
 集成依赖 无额外前置；复用路线图共同约束。
 
@@ -1063,7 +1071,7 @@ Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-op
 | 增量设计：出站/质量/资料/共享/裁决/队列/恢复/费用 | 5–6、8–9、11–15 | 每项归属既有工作包，全部保留开发/验收条件 |
 | 路线图：阶段、依赖、十三项完整范围及验收 | 15 | 原工作包内容完整保留，不重编号、不改变 Issue 状态 |
 
-原始来源：[v0.5 总体设计](EasyOps总体设计-v0.1.md)、[Skill/MCP 管理设计](工作台Skill与MCP管理设计-v0.1.md)、[可信分析与协作增量设计](可信分析与协作增量设计-v0.1.md)、[路线图来源副本](development-roadmap.md)。历史沿革保留，最新完整阅读以本文为入口，当前行为以主规格及源码为准。
+原始来源：[v0.5 总体设计](AIOpsStudio总体设计-v0.1.md)、[Skill/MCP 管理设计](工作台Skill与MCP管理设计-v0.1.md)、[可信分析与协作增量设计](可信分析与协作增量设计-v0.1.md)、[路线图来源副本](development-roadmap.md)。历史沿革保留，最新完整阅读以本文为入口，当前行为以主规格及源码为准。
 
 ### 16.2 后续修改与仍未决事项
 
@@ -1076,3 +1084,9 @@ Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-op
 ### 16.3 本次整合记录
 
 2026-10-23 首次建立统一完整设计；保留 v0.5 架构与研究修订，加入当前状态和冲突处理。本次 OpenSpec 记录见 [consolidate-complete-design](../../openspec/changes/consolidate-complete-design/proposal.md)，发布核对见[验证记录](../../openspec/changes/consolidate-complete-design/verification.md)。本文不替代新环境上线验收，不改变原运行实例。
+
+### 16.4 品牌更名修订
+
+产品、源码包、仓库链接和通用演示素材统一采用 AIOpsStudio；更名与配置/表/Cookie 的有界兼容见第 13.3 节及 [rename-aiopsstudio](../../openspec/changes/rename-aiopsstudio/proposal.md)。该修订不新增或关闭 R01–R13，不改变 E01–E21 和 91 条工作包验收条件，也不将构建、兼容测试或公开发布通过计作新的业务分析验收。首次整合的静态核对边界和历史模型结果继续保留。
+
+品牌入口在 Mac 的兼容切换及其独立验证见[本次更名验证](../../openspec/changes/rename-aiopsstudio/verification.md)。该切换保留原配置、数据库与用户材料，不改变首次文档整合的历史边界，也不作为后续业务工作包完成证明。

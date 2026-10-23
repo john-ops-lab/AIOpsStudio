@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 
+from security_scan import GateError, configured_profile_path
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -31,19 +33,29 @@ def main():
             path = ROOT / path
         if any(p.is_file() and not p.name.endswith('.sample') for p in path.glob('*')):
             raise ValueError('已有自定义钩子，未覆盖')
+    existing_profile = configured_profile_path()
     profile = args.local_profile
     if profile:
         profile = profile.expanduser().resolve()
+        if existing_profile is not None and profile != existing_profile:
+            raise ValueError('私有 profile 与已有配置冲突，未覆盖')
+    else:
+        profile = existing_profile
+    if profile:
         if profile.is_relative_to(ROOT) or not profile.is_file() or profile.stat().st_mode & 0o077:
             raise ValueError('私有 profile 必须在仓库外且权限为 0600 或更严格')
-        if json.loads(profile.read_text()).get('version') != 1:
+        data = json.loads(profile.read_text())
+        if not isinstance(data, dict):
+            raise ValueError('私有 profile 格式无效')
+        version = data.get('version')
+        if type(version) is not int or version != 1:
             raise ValueError('私有 profile 版本无效')
     for name in ['pre-commit', 'pre-push']:
         hook = ROOT / '.githooks' / name
         if not hook.is_file() or not hook.stat().st_mode & 0o111:
             raise ValueError('钩子文件缺失或不可执行')
     if profile:
-        result = git('config', '--local', 'easyops.securityProfile', str(profile))
+        result = git('config', '--local', 'aiopsstudio.securityProfile', str(profile))
         if result.returncode:
             raise ValueError('私有 profile 配置失败')
     if git('config', '--local', 'core.hooksPath', '.githooks').returncode:
@@ -55,6 +67,6 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (ValueError, OSError):
+    except (GateError, ValueError, OSError):
         print('安装失败：请检查 Gitleaks、现有钩子及仓库外 profile；未操作运行实例。', file=sys.stderr)
         sys.exit(1)

@@ -1,8 +1,8 @@
-# EasyOps 运维工作台
+# AIOpsStudio 运维工作台
 
 以 Chat 为中心的只读运维分析工作台，将 Skill、MCP、模型配置、分析报告与原始证据放在同一工作空间。采用 [MIT 协议](LICENSE)。
 
-[完整设计](docs/design/EasyOps完整设计.md) · [当前规格](openspec/specs/) · [设计索引](docs/design/README.md) · [开发工作包](docs/design/EasyOps完整设计.md#15-开发阶段依赖与工作包) · [验证摘要](docs/validation/2026-10-22.md) · [交付状态](docs/status.md)
+[完整设计](docs/design/AIOpsStudio完整设计.md) · [当前规格](openspec/specs/) · [设计索引](docs/design/README.md) · [开发工作包](docs/design/AIOpsStudio完整设计.md#15-开发阶段依赖与工作包) · [验证摘要](docs/validation/2026-10-22.md) · [交付状态](docs/status.md)
 
 当前应用、数据库、执行器与测试面向 Mac 本机运行。此仓库提供通用部署入口；数据源、身份映射、查询目录和模型由部署者自行配置。公开文档是去标识化说明，图片是完全新制的通用演示素材，均不对应某个现场环境。
 
@@ -19,8 +19,8 @@
 需要 Python 3.12、uv、Node 24 和 npm；使用内置数据库启动功能时还需要可用的 Docker。数据库、容器和状态目录应为此应用独立配置。
 
 ```sh
-git clone https://github.com/john-ops-lab/EasyOps.git
-cd EasyOps/backend
+git clone https://github.com/john-ops-lab/AIOpsStudio.git
+cd AIOpsStudio/backend
 uv sync --frozen --python 3.12
 cd ../web
 npm ci --legacy-peer-deps --ignore-scripts
@@ -29,20 +29,22 @@ cd ..
 python3 deploy/local.py start
 ```
 
-默认仅绑定回环地址。Web 为 `http://127.0.0.1:3000`，Python API 为 `127.0.0.1:8000`，PostgreSQL 为 `127.0.0.1:5432`。数据库默认容器 `easyops-db`、卷 `easyops-db-data`、用户和库名 `easyops`，镜像 `postgres:16-alpine`。未指定 Docker context 时使用当前 context，不切换全局设置。管理器创建的数据库容器和卷带有状态目录归属标签；若同名资产属于其他实例，会拒绝启动或挂载。
+默认仅绑定回环地址。Web 为 `http://127.0.0.1:3000`，Python API 为 `127.0.0.1:8000`，PostgreSQL 为 `127.0.0.1:5432`。数据库默认容器 `aiopsstudio-db`、卷 `aiopsstudio-db-data`、用户和库名 `aiopsstudio`，镜像 `postgres:16-alpine`。未指定 Docker context 时使用当前 context，不切换全局设置。管理器创建的数据库容器和卷带有状态目录归属标签；若同名资产属于其他实例，会拒绝启动或挂载。
 
-默认状态目录为 `~/.local/share/easyops`，可通过绝对路径的 `EASYOPS_STATE_DIR` 指定。首次启动生成独立管理员口令和主密钥；已有文件不覆盖。初始账号 `admin`，口令文件位于状态目录的 `private/admin-password`。管理员在页面创建普通用户，凭据通过管理表单只写提交，已有密钥不回显。
+默认状态目录为 `~/.local/share/aiopsstudio`，可通过绝对路径的 `AIOPSSTUDIO_STATE_DIR` 指定。首次启动生成独立管理员口令和主密钥；已有文件不覆盖。初始账号 `admin`，口令文件位于状态目录的 `private/admin-password`。管理员在页面创建普通用户，凭据通过管理表单只写提交，已有密钥不回显。
 
-`EASYOPS_DEPLOY_CONFIG` 可指向仓库外的绝对路径 JSON。以下为通用默认配置，可按本机需要调整：
+仅用新环境变量指定自定义状态目录时，必须同时提供 `AIOPSSTUDIO_DATABASE_URL`，或在部署 JSON 中显式填写 `database.container`、`volume`、`user`、`name` 四项；空目录首次启动与后续启动遵循同一规则，不能仅凭目录存在与否猜数据库。旧 `STATE_DIR` 与同值新键并存时保留旧资产选择，冲突值拒绝。
+
+`AIOPSSTUDIO_DEPLOY_CONFIG` 可指向仓库外的绝对路径 JSON。以下为通用默认配置，可按本机需要调整：
 
 ```json
 {
   "ports": {"web": 3000, "api": 8000, "postgres": 5432},
   "database": {
-    "container": "easyops-db",
-    "volume": "easyops-db-data",
-    "user": "easyops",
-    "name": "easyops",
+    "container": "aiopsstudio-db",
+    "volume": "aiopsstudio-db-data",
+    "user": "aiopsstudio",
+    "name": "aiopsstudio",
     "image": "postgres:16-alpine"
   },
   "node_binary": "node",
@@ -50,7 +52,15 @@ python3 deploy/local.py start
 }
 ```
 
-可选字段 `docker_context` 指定数据库所在 context。若使用已有 PostgreSQL，设置仓库外的 `EASYOPS_DATABASE_URL`；启动管理器不创建 Docker 数据库，仍管理本应用独立口令和主密钥。正式工作台拒绝 SQLite，单测可使用隔离 SQLite。
+可选字段 `docker_context` 指定数据库所在 context。若使用已有 PostgreSQL，设置仓库外的 `AIOPSSTUDIO_DATABASE_URL`；启动管理器不创建 Docker 数据库，仍管理本应用独立口令和主密钥。正式工作台拒绝 SQLite，单测可使用隔离 SQLite。
+
+### 已有安装的更名边界
+
+当前产品、仓库、Python 包及环境变量主前缀统一使用 AIOpsStudio / `aiopsstudio` / `AIOPSSTUDIO_`。原环境变量前缀仍由服务端集中兼容；新旧同项同时设置且值不同会拒绝启动，避免连接到错误实例。Node 与 Vite 共用 `AIOPSSTUDIO_API_URL` 解析；浏览器不读取凭据或旧配置。
+
+更名不自动移动状态目录、重建数据库、轮换主密钥或覆盖已有配置。未显式指定状态目录时，服务端只读检查当前及旧版默认目录：仅存在一个时复用该目录，多个并存则拒绝启动，要求通过 `AIOPSSTUDIO_STATE_DIR` 明确选择，不自动合并。已有安装的端口、数据库连接及其他部署参数仍须在仓库外按实际配置提供，并保留匹配的主密钥；不应把全新默认目录当作已有实例迁移完成。
+
+已有数据库完整使用旧版三张工作台表时继续复用，新安装使用新表名；新旧表混用或任一套不完整时拒绝初始化。历史数据库容器/卷只有与状态目录匹配的归属标签才由管理器接管，缺少标签时使用显式外部数据库连接，不冒认资产。有效旧 Cookie 升级为当前 Cookie，保留原会话剩余有效期；新旧 Cookie 值冲突时返回 401 并清除两者。并行独立实例的目录、数据库、卷与端口需保持独立；隔离测试不能代替已有实例升级验收。
 
 SSH 转发默认关闭。仅在接入确有需要时设置 `ssh_tunnel.enabled=true`，同时提供 `host`、`local_port`、`remote_port`；`remote_host` 可选，默认回环地址。所有地址与端口由部署者提供，仓库没有内置源主机或隧道。
 
@@ -132,4 +142,4 @@ openspec validate --all --strict
 
 备份本应用 PostgreSQL、Skill/证据/附件目录及独立主密钥恢复材料。恢复时停止本应用写入并保持数据一致；仅恢复数据库不能恢复附件字节或缺失的主密钥。
 
-`backend/easyops/` 提供配置、认证、Vault、存储和执行；`web/src/` 为 React 界面，`web/server.mjs` 提供同源代理与持久 Runner；`deploy/` 提供本机生命周期和显式引导；`tests/` 提供验收入口。公开 [Chat 演示图](docs/design/assets/20261022-Chat工作台Demo-v0.1.png)及架构图均为完全新制的通用演示素材，不是实际验收截图。第三方依赖保留各自许可，不分发安装目录。
+`backend/aiopsstudio/` 提供配置、认证、Vault、存储和执行；`web/src/` 为 React 界面，`web/server.mjs` 提供同源代理与持久 Runner；`deploy/` 提供本机生命周期和显式引导；`tests/` 提供验收入口。公开 [Chat 演示图](docs/design/assets/20261022-AIOpsStudio-Chat工作台Demo-v0.1.png)及架构图均为完全新制的通用演示素材，不是实际验收截图。第三方依赖保留各自许可，不分发安装目录。

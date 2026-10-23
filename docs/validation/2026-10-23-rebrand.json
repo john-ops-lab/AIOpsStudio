@@ -1,0 +1,114 @@
+{
+  "schema": "aiopsstudio-rebrand-validation/v1",
+  "scope": "Mac_isolated_rename_compatibility",
+  "backend_tests": {
+    "passed": 156
+  },
+  "publication_security_synthetic_tests": {
+    "passed": 34
+  },
+  "postgres": {
+    "scope": "isolated_Mac_PostgreSQL_16_tmpfs_synthetic_only",
+    "checks": {
+      "loopback_only_and_no_persistent_mounts": true,
+      "fresh_database_uses_current_tables": true,
+      "current_reopen_preserves_history_session_ciphertext_events_and_lease": true,
+      "legacy_complete_tables_reused_without_new_tables": true,
+      "legacy_history_session_ciphertext_and_events_unchanged": true,
+      "legacy_lease_ownership_and_monotonic_writes_continue": true,
+      "mixed_namespace_rejected_without_merging_or_creating_tables": true
+    },
+    "model_or_source_calls": 0,
+    "existing_assets_modified": false,
+    "first_attempt": {
+      "status": "readiness_probe_failed_before_schema_checks",
+      "reason": "Unix_socket_readiness_preceded_final_TCP_server",
+      "temporary_container_removed": true
+    },
+    "retry_change": "TCP_readiness_and_bounded_host_connection_wait",
+    "status": "passed",
+    "cleanup": {
+      "only_owned_temporary_container_removed": true,
+      "persistent_volumes_created": 0
+    }
+  },
+  "http_node_agui": {
+    "scope": "isolated_Mac_loopback_HTTP_Node_AGUI_SQLite_synthetic_only",
+    "checks": {
+      "served_HTML_title_and_product_brand_current": true,
+      "CopilotKit_requires_authenticated_session": true,
+      "login_issues_current_HttpOnly_strict_cookie": true,
+      "legacy_cookie_migrates_without_extending_persisted_session": true,
+      "CopilotKit_info_registers_only_current_agent": true,
+      "two_current_agent_attaches_project_same_terminal_run": true,
+      "business_run_count_records_and_usage_unchanged": true,
+      "one_owner_scoped_protocol_binding_without_duplicate_work": true,
+      "old_agent_entry_is_unregistered_and_cannot_dispatch": true
+    },
+    "model_calls": 0,
+    "source_calls": 0,
+    "existing_instance_modified": false,
+    "event_types_per_attach": [
+      [
+        "RUN_STARTED",
+        "STATE_SNAPSHOT",
+        "MESSAGES_SNAPSHOT",
+        "RUN_FINISHED"
+      ],
+      [
+        "RUN_STARTED",
+        "STATE_SNAPSHOT",
+        "MESSAGES_SNAPSHOT",
+        "RUN_FINISHED"
+      ]
+    ],
+    "status": "passed",
+    "cleanup": {
+      "only_spawned_children_stopped": true,
+      "temporary_app_database_and_logs_removed": true
+    }
+  },
+  "frontend": {
+    "typescript_vite_build": "passed",
+    "existing_large_chunk_warning": true,
+    "fixed_upstream_regression": "passed"
+  },
+  "real_model_calls": 0,
+  "source_calls": 0,
+  "functional_roadmap_status_changed": false,
+  "existing_Mac_runtime_cutover": {
+    "scope": {
+      "mac_local_application_rename": true,
+      "persistent_data_comparison": true,
+      "business_analysis_acceptance": false,
+      "browser_session_continuity_verified": false
+    },
+    "checks": {
+      "database_table_set_unchanged": true,
+      "database_content_unchanged": true,
+      "document_content_unchanged": true,
+      "database_schema_unchanged": true,
+      "execution_slot_idle": true,
+      "configuration_and_keys_unchanged": true,
+      "artifacts_unchanged": true,
+      "database_identity_unchanged": true,
+      "volume_identity_unchanged": true,
+      "forwarding_identity_unchanged": true,
+      "original_source_unchanged": true,
+      "new_application_processes_verified": true,
+      "anonymous_database_health_passed": true,
+      "new_brand_title_verified": true,
+      "anonymous_private_history_rejected": true,
+      "anonymous_session_remains_anonymous": true
+    },
+    "model_calls": 0,
+    "source_calls": 0,
+    "new_login_or_business_records": 0,
+    "original_configuration_unchanged": true,
+    "database_identity_unchanged": true,
+    "volume_identity_unchanged": true,
+    "forwarding_identity_unchanged": true,
+    "rollback_prepared": true,
+    "rollback_executed": false
+  }
+}

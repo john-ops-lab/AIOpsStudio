@@ -1,5 +1,5 @@
 {
-  "schema": "easyops-public-validation-summary/v2",
+  "schema": "aiopsstudio-public-validation-summary/v2",
   "date": "2026-10-22",
   "timezone": "Asia/Shanghai",
   "application_and_validation_host": "Mac",

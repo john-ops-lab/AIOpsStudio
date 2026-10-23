@@ -1,4 +1,4 @@
-# EasyOps 首版实现协作合同
+# AIOpsStudio 首版实现协作合同
 
 ## 当前变更：Chat 运维工作台与用户历史
 
@@ -18,9 +18,11 @@ OpenSpec change：`chat-workbench-user-history`，规格与设计位于 `openspe
 
 ---
 
-设计入口：[完整设计](docs/design/EasyOps完整设计.md)（2026-10-23 整合，区分当前实现与后续目标）；原 v0.5 总体及管理文档保留为来源。当前 API 契约以本合同、主规格和源码为准。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
+设计入口：[完整设计](docs/design/AIOpsStudio完整设计.md)（2026-10-23 整合，区分当前实现与后续目标）；原 v0.5 总体及管理文档保留为来源。当前 API 契约以本合同、主规格和源码为准。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
 
 部署边界：应用、PostgreSQL、执行器与测试面向 Mac 本机；外部 CMDB、可观测和告警接口只读接入。端口、状态目录、数据库、可选 SSH 转发以及引导源配置均由部署者在仓库外提供，默认不启用转发。后续模型验证优先 MiniMax，不把历史模型结果改称为新模型验证。
+
+更名兼容：Python 包为 `aiopsstudio`，环境变量主前缀为 `AIOPSSTUDIO_`，CopilotKit Provider 与 Node agent 注册名均为 `aiopsstudio`。旧环境变量由服务端集中兼容，同项新旧不同值拒绝；唯一旧状态目录和完整旧表可以复用，多目录/混合或不完整表要求明确处理，不能自动合并。自定义状态仅使用新键时必须提供外部数据库 URL 或完整数据库资产身份，不能因换键静默选择新库。有效旧 Cookie 在原有效期内升级，冲突返回 401 并清除新旧 Cookie。已有配置、制品和主密钥保持匹配；兼容不替代生命周期与完整恢复验收，细节见[完整设计第 13.3 节](docs/design/AIOpsStudio完整设计.md#133-当前-mac-部署)。
 
 ## API（均 /api 前缀）
 
@@ -39,10 +41,10 @@ Run字段：id,thread_id,attempt_id,purpose,title,status(queued/running/succeede
 
 ## Python模块分工
 
-- backend/easyops/store.py: Store。get(kind,id)->dict|None; list(kind)->list[dict]; save(kind,id,data,expected_revision=None)->dict（增加revision），delete(kind,id)；atomic(callback)如需要；claim_job(owner)->run|None、renew_job(id,owner)、event(run_id,type,payload)->dict、events(run_id,after=0)->list。PostgreSQL JSON文档存储，claim使用数据库锁保证单执行槽；测试可用SQLite但正式验收必须PostgreSQL。StoreConflict异常。时间UTC ISO8601。save不在输出泄露密钥。store对敏感实体只供内部使用，API统一脱敏。
-- backend/easyops/config.py + api.py + main.py：配置生命周期、认证、Secret、管理API（backend agent负责）。create_app通过configure_runtime(app,store)装配运行模块。Settings store kind='settings', id='main'。运行模块从app.state.store取得Store，从app.state.vault取得Vault（put(value)->secret_id,get(secret_id)->str,revoke(secret_id)）。kind: skill,mcp,model,run,invocation,evidence,audit,secret。实体全字段普通dict。
-- backend/easyops/runtime.py：configure_runtime(app,store)注册alert/run/test/invocation/evidence API并启动单worker lifespan，或暴露async start()/stop()供main调用（runtime agent负责）。管理API probe/discover调用connectors模块接口，模型test通过runtime.submit。提交统一入口async submit(payload)->run。
-- backend/easyops/connectors.py：async mcp_discover(config,vault)->dict{items,server_info,protocol_version}; mcp_call(config,vault,tool_name,arguments)->dict原MCP响应；async alert_list(settings,vault),alert_detail(settings,vault,id)；真实httpx/MCP官方SDK、严格TLS、超时限量（runtime agent负责）。
+- backend/aiopsstudio/store.py: Store。get(kind,id)->dict|None; list(kind)->list[dict]; save(kind,id,data,expected_revision=None)->dict（增加revision），delete(kind,id)；atomic(callback)如需要；claim_job(owner)->run|None、renew_job(id,owner)、event(run_id,type,payload)->dict、events(run_id,after=0)->list。PostgreSQL JSON文档存储，claim使用数据库锁保证单执行槽；测试可用SQLite但正式验收必须PostgreSQL。StoreConflict异常。时间UTC ISO8601。save不在输出泄露密钥。store对敏感实体只供内部使用，API统一脱敏。
+- backend/aiopsstudio/config.py + api.py + main.py：配置生命周期、认证、Secret、管理API（backend agent负责）。create_app通过configure_runtime(app,store)装配运行模块。Settings store kind='settings', id='main'。运行模块从app.state.store取得Store，从app.state.vault取得Vault（put(value)->secret_id,get(secret_id)->str,revoke(secret_id)）。kind: skill,mcp,model,run,invocation,evidence,audit,secret。实体全字段普通dict。
+- backend/aiopsstudio/runtime.py：configure_runtime(app,store)注册alert/run/test/invocation/evidence API并启动单worker lifespan，或暴露async start()/stop()供main调用（runtime agent负责）。管理API probe/discover调用connectors模块接口，模型test通过runtime.submit。提交统一入口async submit(payload)->run。
+- backend/aiopsstudio/connectors.py：async mcp_discover(config,vault)->dict{items,server_info,protocol_version}; mcp_call(config,vault,tool_name,arguments)->dict原MCP响应；async alert_list(settings,vault),alert_detail(settings,vault,id)；真实httpx/MCP官方SDK、严格TLS、超时限量（runtime agent负责）。
 - web/：frontend agent负责。严格使用本合同API，公共api.ts集中容错，不用假成功或静态统计冒充后端。
 - deploy/、README、集成测试、Node同源runtime与最终联调由主Agent负责。任何接口调整及时消息通知。
 

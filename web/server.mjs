@@ -8,8 +8,9 @@ import { HttpAgent } from '@ag-ui/client';
 import { AgentRunner, CopilotRuntime } from '@copilotkit/runtime/v2';
 import { createCopilotNodeListener } from '@copilotkit/runtime/v2/node';
 import { Observable } from 'rxjs';
+import { apiUpstream } from './environment.mjs';
 
-const upstream = new URL(process.env.EASYOPS_API_URL || 'http://127.0.0.1:8000');
+const upstream = new URL(apiUpstream());
 const port = Number(process.env.PORT || 3000);
 const origin = `http://127.0.0.1:${port}`;
 const dist = resolve(fileURLToPath(new URL('./dist', import.meta.url)));
@@ -71,7 +72,7 @@ class PersistentRunner extends AgentRunner {
 }
 
 const runtime = new CopilotRuntime({
-  agents: { easyops: new HttpAgent({ url: new URL('/api/ag-ui', upstream).href }) },
+  agents: { aiopsstudio: new HttpAgent({ url: new URL('/api/ag-ui', upstream).href }) },
   runner: new PersistentRunner(),
 });
 const copilot = createCopilotNodeListener({ runtime, basePath: '/api/copilotkit', cors: false });
@@ -133,5 +134,5 @@ const server = createServer(async (req, res) => {
     fail(res, 500, '工作台请求失败，请查看服务日志');
   }
 });
-server.listen(port, '127.0.0.1', () => console.log(`EasyOps 运维工作台 ${origin}`));
+server.listen(port, '127.0.0.1', () => console.log(`AIOpsStudio 运维工作台 ${origin}`));
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => server.close(() => process.exit(0)));

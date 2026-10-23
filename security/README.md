@@ -47,6 +47,8 @@ git diff --cached
 
 通用扫描无法识别所有任意名称和数字。当前开发副本可用仓库外、权限为 `0600` 或更严格的 JSON 描述实际私有来源。profile 不复制实际密钥；helper 每次只读读取来源，结果经捕获管道进入扫描器内存。已配置的 profile 失效会阻断。
 
+新配置键为 `aiopsstudio.securityProfile`。读取时兼容旧 `easyops.securityProfile`：只有旧键时继续检查该来源；新旧键指向同一规范路径时使用同一 profile；不同路径、空值或任一键多值时拒绝扫描和安装，不能以新键优先为由忽略旧来源。安装器保留旧键，并将同一已验证路径登记到新键；显式 `--local-profile` 与现有路径不同也拒绝覆盖。需要更换来源时，由维护者核对后明确更新当前副本配置，不自动改变其他副本或私有文件。
+
 下面仅展示结构，路径和端口由部署者填写，不保存到 Git：
 
 ```json
@@ -60,8 +62,8 @@ git diff --cached
   "postgres": {
     "host": "127.0.0.1",
     "port": 5432,
-    "database": "easyops",
-    "user": "easyops",
+    "database": "aiopsstudio",
+    "user": "aiopsstudio",
     "password_source": {
       "path": "/absolute/external/config.json",
       "pointer": "/db_password"
@@ -79,6 +81,8 @@ python3 scripts/install_security_hooks.py --local-profile /absolute/external/sec
 
 启用私有比对需要当前副本的 `backend/.venv/bin/python`。数据库来源还需应用已锁定的 psycopg、cryptography 依赖；仅允许 IP 回环连接，并显式开启和核对 PostgreSQL 只读事务。读取 Vault 密文/明文、口令哈希、会话及配置实体标识；不使用应用初始化入口。无数据库段时不连接数据库。旧验收入口 `known_secret_values()` 使用同一只读来源，仅返回凭据用于 API 保密检查，不把公开配置实体 ID 当成泄露；需先配置私有 profile。
 
+数据库 helper 只读检查既有 `aiopsstudio_` 或兼容 `easyops_` 的 `documents`、`events`、`worker_slot` 三张表。仅存在一套完整表组时读取其文档表；缺表、混合表组、两套同时存在或没有表组时停止，不能把未知来源当作空密钥集。它不建表、不迁移、不导入应用，也不修改本机现有数据库或连接参数。
+
 CI 没有此私有 profile，不上传配置或传递真实密钥；本机精确比对是公开前的额外门禁。真实配置和现场发生变化时同步更新仓库外来源描述或词表。
 
 ## 图片复核
@@ -91,4 +95,4 @@ CI 没有此私有 profile，不上传配置或传递真实密钥；本机精确
 
 客户端钩子能被拥有本机控制权的人主动关闭；这里保护正常开发流程，不能声称绝对防泄露。GitHub Push Protection 保持启用，CI 是上传后的通用复核，不能替代推送前检查或人工审查，也不声称检测所有自定义业务名称、编码和隐写信息。
 
-卸载/恢复需明确修改此副本的 `core.hooksPath` 和 `easyops.securityProfile`，恢复安装前设置；安装器不会修改全局设置、其他副本或运行实例。正常开发不得关闭门禁来消除检查失败。
+卸载/恢复需明确修改此副本的 `core.hooksPath`、`aiopsstudio.securityProfile` 及仍存在的兼容键 `easyops.securityProfile`，恢复安装前设置；安装器不会修改全局设置、其他副本或运行实例。正常开发不得关闭门禁来消除检查失败。

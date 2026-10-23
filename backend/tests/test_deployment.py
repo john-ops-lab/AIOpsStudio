@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -13,7 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from deploy.settings import load_config
+from deploy.settings import DEFAULT_DATABASE, load_config
 from deploy import seed as seed_module
 from deploy.seed import apply_bootstrap, local_origin, read_external_json, validate_bootstrap
 
@@ -25,20 +26,23 @@ def config_file(tmp_path, body):
 
 
 def local_module(tmp_path, monkeypatch):
-    monkeypatch.setenv('EASYOPS_STATE_DIR', str(tmp_path / 'runtime'))
-    monkeypatch.delenv('EASYOPS_DEPLOY_CONFIG', raising=False)
+    monkeypatch.setenv('AIOPSSTUDIO_STATE_DIR', str(tmp_path / 'runtime'))
+    settings = config_file(tmp_path, {'database': DEFAULT_DATABASE})
+    monkeypatch.setenv('AIOPSSTUDIO_DEPLOY_CONFIG', str(settings))
     spec = importlib.util.spec_from_file_location('isolated_deployment', ROOT / 'deploy/local.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_generic_defaults_have_no_implicit_external_connections():
+def test_generic_defaults_have_no_implicit_external_connections(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
     config = load_config(environ={})
     assert config['ports'] == {'web': 3000, 'api': 8000, 'postgres': 5432}
     assert config['docker_context'] is None
     assert config['ssh_tunnel'] == {'enabled': False}
-    assert config['state_dir'] == Path.home() / '.local/share/easyops'
+    assert config['state_dir'] == tmp_path / '.local/share/aiopsstudio'
+    assert config['database']['volume'] == 'aiopsstudio-db-data'
 
 
 @pytest.mark.parametrize('body', [
@@ -55,15 +59,16 @@ def test_configuration_errors_fail_before_any_process_action(tmp_path, body):
 
 
 def test_external_ports_context_and_optional_tunnel(tmp_path):
-    cfg = load_config(config_file(tmp_path, {'ports': {'web': 3100, 'api': 8100, 'postgres': 5440}, 'docker_context': 'example-context',
-        'ssh_tunnel': {'enabled': True, 'host': 'example-ssh', 'local_port': 9000, 'remote_port': 9001}}), environ={'EASYOPS_STATE_DIR': str(tmp_path / 'state')})
+    cfg = load_config(config_file(tmp_path, {'database': DEFAULT_DATABASE,
+        'ports': {'web': 3100, 'api': 8100, 'postgres': 5440}, 'docker_context': 'example-context',
+        'ssh_tunnel': {'enabled': True, 'host': 'example-ssh', 'local_port': 9000, 'remote_port': 9001}}), environ={'AIOPSSTUDIO_STATE_DIR': str(tmp_path / 'state')})
     assert cfg['ports']['web'] == 3100 and cfg['state_dir'] == tmp_path / 'state'
     assert cfg['docker_context'] == 'example-context' and cfg['ssh_tunnel']['remote_host'] == '127.0.0.1'
 
 
 def test_existing_database_url_never_controls_a_container(tmp_path, monkeypatch):
     module = local_module(tmp_path, monkeypatch)
-    monkeypatch.setenv('EASYOPS_DATABASE_URL', 'postgresql://example.invalid/example')
+    monkeypatch.setenv('AIOPSSTUDIO_DATABASE_URL', 'postgresql://example.invalid/example')
     monkeypatch.setattr(module.subprocess, 'run', lambda *a, **k: pytest.fail('must not invoke Docker'))
     module.db()
     assert not module.STATE.exists()
@@ -81,7 +86,7 @@ def test_init_preserves_existing_local_material_and_permissions(tmp_path, monkey
 
 def test_same_named_foreign_container_is_not_started(tmp_path, monkeypatch):
     module = local_module(tmp_path, monkeypatch)
-    monkeypatch.delenv('EASYOPS_DATABASE_URL', raising=False)
+    monkeypatch.delenv('AIOPSSTUDIO_DATABASE_URL', raising=False)
     calls = []
     def run(cmd, **kwargs):
         calls.append(cmd)
@@ -94,7 +99,7 @@ def test_same_named_foreign_container_is_not_started(tmp_path, monkeypatch):
 
 def test_same_named_foreign_volume_is_never_mounted(tmp_path, monkeypatch):
     module = local_module(tmp_path, monkeypatch)
-    monkeypatch.delenv('EASYOPS_DATABASE_URL', raising=False)
+    monkeypatch.delenv('AIOPSSTUDIO_DATABASE_URL', raising=False)
     calls = []
     def run(cmd, **kwargs):
         calls.append(cmd)
@@ -103,6 +108,37 @@ def test_same_named_foreign_volume_is_never_mounted(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='未挂载'):
         module.db()
     assert len(calls) == 2 and all('inspect' in cmd for cmd in calls)
+
+
+@pytest.mark.parametrize('label_mode', ['previous', 'current', 'same-both'])
+def test_existing_owned_container_is_reused_without_recreating_data(tmp_path, monkeypatch, label_mode):
+    module = local_module(tmp_path, monkeypatch)
+    monkeypatch.delenv('AIOPSSTUDIO_DATABASE_URL', raising=False)
+    state_id = hashlib.sha256(str(module.STATE).encode()).hexdigest()[:16]
+    labels = {'previous': '<no value>|' + state_id, 'current': state_id + '|<no value>', 'same-both': state_id + '|' + state_id}
+    calls = []
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=labels[label_mode] + '\n' if 'inspect' in cmd else '')
+    monkeypatch.setattr(module.subprocess, 'run', run)
+    module.db()
+    assert any('start' in cmd for cmd in calls)
+    assert not any('volume' in cmd or 'run' in cmd for cmd in calls)
+    assert 'easyops.state_id' in calls[0][-2] and 'aiopsstudio.state_id' in calls[0][-2]
+
+
+def test_conflicting_container_labels_are_rejected_without_start(tmp_path, monkeypatch):
+    module = local_module(tmp_path, monkeypatch)
+    monkeypatch.delenv('AIOPSSTUDIO_DATABASE_URL', raising=False)
+    state_id = hashlib.sha256(str(module.STATE).encode()).hexdigest()[:16]
+    calls = []
+    def run(cmd, **kwargs):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout=state_id + '|other-state\n')
+    monkeypatch.setattr(module.subprocess, 'run', run)
+    with pytest.raises(RuntimeError, match='不属于此状态目录'):
+        module.db()
+    assert len(calls) == 1
 
 
 def test_start_has_no_tunnel_when_disabled_and_no_real_processes(tmp_path, monkeypatch):
@@ -120,7 +156,7 @@ def test_start_has_no_tunnel_when_disabled_and_no_real_processes(tmp_path, monke
 
 def test_external_database_first_spawn_initializes_only_its_selected_state(tmp_path, monkeypatch):
     module = local_module(tmp_path, monkeypatch)
-    monkeypatch.setenv('EASYOPS_DATABASE_URL', 'postgresql://example.invalid/example')
+    monkeypatch.setenv('AIOPSSTUDIO_DATABASE_URL', 'postgresql://example.invalid/example')
     monkeypatch.setattr(module, 'alive', lambda name: False)
     monkeypatch.setattr(module.subprocess, 'Popen', lambda *a, **k: SimpleNamespace(pid=12345))
     monkeypatch.setattr(module, 'process_identity', lambda pid: {'pid': pid, 'pgid': pid, 'started_at': 'synthetic', 'command': 'synthetic'})
@@ -170,7 +206,7 @@ def test_bootstrap_loopback_alias_keeps_url_origin_and_host_consistent(tmp_path,
         assert request.headers['Host'] == '127.0.0.1:3000'
         return httpx.Response(200, json={'items': []})
     client_class = httpx.Client
-    monkeypatch.delenv('EASYOPS_DEPLOY_CONFIG', raising=False)
+    monkeypatch.delenv('AIOPSSTUDIO_DEPLOY_CONFIG', raising=False)
     monkeypatch.setattr(seed_module.httpx, 'Client', lambda **kwargs: client_class(**kwargs, transport=httpx.MockTransport(handle)))
     seed_module.main(['--url', url, '--bootstrap', str(bootstrap), '--password-file', str(password)])
     assert requests == ['/api/login', '/api/mcp-servers', '/api/model-configs', '/api/skills']

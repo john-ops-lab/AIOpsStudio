@@ -1,9 +1,6 @@
 """FastAPI application factory; deployment material remains outside the database."""
 from contextlib import asynccontextmanager
-import hashlib
 import json
-import os
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -15,26 +12,28 @@ from .store import Store
 from .identity import IdentityService
 from .attachments import AttachmentsService, configure_attachments
 from .conversations import ConversationsService, configure_conversations
+from .compat import environment, state_directory
 
 
 def create_app(*, database_url=None, master_key=None, password=None, public_origin=None, artifact_dir=None, testing=False, store=None, enable_runtime=True):
-    database_url = database_url or os.environ.get("EASYOPS_DATABASE_URL")
+    config = environment()
+    database_url = database_url or config.get("AIOPSSTUDIO_DATABASE_URL")
     if not store and not database_url:
-        raise ValueError("缺少 EASYOPS_DATABASE_URL，正式运行必须配置 PostgreSQL")
+        raise ValueError("缺少 AIOPSSTUDIO_DATABASE_URL，正式运行必须配置 PostgreSQL")
     if not testing and ((store and store.sqlite) or (database_url and database_url.startswith("sqlite:"))):
         raise ValueError("SQLite 仅用于单元测试，正式运行必须使用 PostgreSQL")
     if master_key is None:
-        key_file = os.environ.get("EASYOPS_MASTER_KEY_FILE")
+        key_file = config.get("AIOPSSTUDIO_MASTER_KEY_FILE")
         if not key_file:
-            raise ValueError("必须通过 EASYOPS_MASTER_KEY_FILE 提供数据库之外的独立主密钥")
+            raise ValueError("必须通过 AIOPSSTUDIO_MASTER_KEY_FILE 提供数据库之外的独立主密钥")
         master_key = read_private_file(key_file, "独立主密钥")
     if password is None:
-        password_file = os.environ.get("EASYOPS_PASSWORD_FILE")
-        password = read_private_file(password_file, "登录口令") if password_file else os.environ.get("EASYOPS_PASSWORD")
+        password_file = config.get("AIOPSSTUDIO_PASSWORD_FILE")
+        password = read_private_file(password_file, "登录口令") if password_file else config.get("AIOPSSTUDIO_PASSWORD")
     if not password or len(password) < 12:
         raise ValueError("工作台登录口令至少需要 12 个字符")
-    public_origin = (public_origin or os.environ.get("EASYOPS_PUBLIC_ORIGIN", "http://127.0.0.1:3000")).rstrip("/")
-    artifact_dir = artifact_dir or os.environ.get("EASYOPS_ARTIFACT_DIR", str(Path(os.environ.get("EASYOPS_STATE_DIR", str(Path.home() / ".local/share/easyops"))).expanduser() / "artifacts"))
+    public_origin = (public_origin or config.get("AIOPSSTUDIO_PUBLIC_ORIGIN", "http://127.0.0.1:3000")).rstrip("/")
+    artifact_dir = artifact_dir or config.get("AIOPSSTUDIO_ARTIFACT_DIR") or str(state_directory(config) / "artifacts")
     owns_store = store is None
     store = store or Store(database_url)
 
@@ -50,7 +49,7 @@ def create_app(*, database_url=None, master_key=None, password=None, public_orig
             if owns_store:
                 store.close()
 
-    app = FastAPI(title="EasyOps 工作台", version="0.1.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="AIOpsStudio 工作台", version="0.1.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store = store
     app.state.vault = Vault(store, master_key)
     app.state.config = ConfigService(store, app.state.vault, artifact_dir)

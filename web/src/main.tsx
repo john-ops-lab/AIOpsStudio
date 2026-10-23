@@ -12,7 +12,7 @@ class ErrorBoundary extends Component<
     return { error: error.message };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("EasyOps rendering error", error, info.componentStack);
+    console.error("AIOpsStudio rendering error", error, info.componentStack);
   }
   render() {
     return this.state.error ? (

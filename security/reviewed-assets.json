@@ -1,9 +1,12 @@
 {
   "version": 1,
-  "review": "2026-10-23: 通用图片已完成目视/OCR、CRC、必要块及无尾随数据检查；仅允许以下路径和精确字节。更新必须重新复核，不可自动生成放行记录。",
+  "review": "2026-10-23: 通用图片及AIOpsStudio更名图已完成目视、macOS Vision OCR、CRC、必要块及无尾随数据检查；新图独立路径，旧路径哈希仅保留供历史检查。仅允许以下路径和精确字节；变更必须重新复核。",
   "png": {
     "design/workbench-concept.png": "65cb3af9a5b9b02308d698c5ab32f4566042bc0b608ac0b021f6b977b36e49de",
     "docs/design/assets/20261022-Chat工作台Demo-v0.1.png": "65cb3af9a5b9b02308d698c5ab32f4566042bc0b608ac0b021f6b977b36e49de",
-    "docs/design/assets/architecture-v1/EasyOps-AI运维平台架构-v1.png": "3348c98aa38e9b21f14586c716077d9bae5d3383e19d9c17d60ee9b10a92fe47"
+    "docs/design/assets/architecture-v1/EasyOps-AI运维平台架构-v1.png": "3348c98aa38e9b21f14586c716077d9bae5d3383e19d9c17d60ee9b10a92fe47",
+    "design/aiopsstudio-workbench-concept.png": "dba7d6a7d4edc6e1469011f5d880cd0c36b2d95f62286aa0024595313f71ceed",
+    "docs/design/assets/20261022-AIOpsStudio-Chat工作台Demo-v0.1.png": "dba7d6a7d4edc6e1469011f5d880cd0c36b2d95f62286aa0024595313f71ceed",
+    "docs/design/assets/architecture-v1/AIOpsStudio-AI运维平台架构-v1.png": "c3e5ac63c4e2d45d72c5fcc7377d46d2f0a7de44d70f43bbafbcf06dcaa6833e"
   }
 }

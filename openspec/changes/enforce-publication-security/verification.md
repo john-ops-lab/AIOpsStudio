@@ -26,7 +26,7 @@ CI 从固定官方 Go 模块版本构建 Gitleaks，显式设置其版本字段�
 
 实现提交 `08f1033fdbf974fc23b0fb295a11d347921ec68f` 已通过实际 pre-commit / pre-push，未绕过钩子。推送前检查 5 个可达提交、228 个 Git 对象、88 项私有材料，命中 0。GitHub 上 133 个文件的路径和 blob 与本机一致，根 tree 及提交相符；Secret Scanning 和 Push Protection 保持 enabled。
 
-修复后的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39909654983) 对上述实现提交通过：完整 Git 历史扫描和 23 项合成回归成功。首次失败记录仍保留，不把未执行的检查计为通过。最终文档收尾提交同样经本机钩子与独立 CI 复核，最终状态以对应提交的检查为准。
+修复后的 [Publication security CI](https://github.com/john-ops-lab/AIOpsStudio/actions/runs/39909654983) 对上述实现提交通过：完整 Git 历史扫描和 23 项合成回归成功。首次失败记录仍保留，不把未执行的检查计为通过。最终文档收尾提交同样经本机钩子与独立 CI 复核，最终状态以对应提交的检查为准。
 
 安装后保全检查通过；收尾再次只读核对原运行实例。临时指令文件已清理，测试仓库及扫描临时快照由上下文自动删除；私有 profile 和审计收据留在仓库外。
 

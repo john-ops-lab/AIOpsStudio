@@ -4,7 +4,7 @@
 
 ## Context
 
-见 proposal 的 Why。当前 React Runs 页面围绕 run 展示报告，Chat 为附属面板；认证仅恢复 admin。运行状态为 PostgreSQL JSON 文档和持久事件，原始证据是服务端文件。保留现有单执行槽、Deep Agents、只读源与 CopilotKit/AG-UI 投影。实现时依据当时确认的界面要求；当前公开 [Chat 通用演示](../../../docs/design/assets/20261022-Chat工作台Demo-v0.1.png)仅展示布局方向，不能作为原验收截图。
+见 proposal 的 Why。当前 React Runs 页面围绕 run 展示报告，Chat 为附属面板；认证仅恢复 admin。运行状态为 PostgreSQL JSON 文档和持久事件，原始证据是服务端文件。保留现有单执行槽、Deep Agents、只读源与 CopilotKit/AG-UI 投影。实现时依据当时确认的界面要求；当前公开 [Chat 通用演示](../../../docs/design/assets/20261022-AIOpsStudio-Chat工作台Demo-v0.1.png)仅展示布局方向，不能作为原验收截图。
 
 ## Goals / Non-Goals
 

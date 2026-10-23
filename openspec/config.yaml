@@ -4,11 +4,11 @@ context: |
   Language: zh-CN
   All artifacts must be written in zh-CN.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
-  EasyOps uses React/Vite, FastAPI/Deep Agents and PostgreSQL. Product language is zh-CN.
+  AIOpsStudio uses React/Vite, FastAPI/Deep Agents and PostgreSQL. Product language is zh-CN.
   Follow proposal -> delta specs/design -> tasks -> apply -> verify for all subsequent development.
   The user authorized the Chat implementation, public repository initialization, and sanitize-public-history including an independent public checkout and rewritten public history.
   All application development, runtime and validation target the Mac; external systems are read-only sources configured outside the repository.
-  Preserve the existing private runtime. The current authorized publication cleanup does not include tags or Releases; other external actions follow the user instruction. Prefer MiniMax for future model validation, supplied through external configuration.
+  Preserve existing private configuration and durable data. The explicitly authorized rename may switch only Mac API/Web after compatibility and preservation checks, retaining original database and source services. Publication and rename do not include tags or Releases; other external actions follow the user instruction. Prefer MiniMax for future model validation, supplied through external configuration.
   User histories, runs, messages, evidence and attachments must be isolated by authenticated server-side owner.
 
 # Per-artifact rules (optional)

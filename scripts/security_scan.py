@@ -38,14 +38,32 @@ def git(*args, data=None):
     return run_git(*args, data=data).stdout
 
 
+def configured_profile_path():
+    """Resolve the renamed local key without ever dropping a legacy profile."""
+    paths = []
+    for key in ('aiopsstudio.securityProfile', 'easyops.securityProfile'):
+        configured = run_git('config', '--local', '--get-all', key, check=False)
+        if configured.returncode == 1:
+            continue
+        if configured.returncode:
+            raise GateError('private_profile_config_failed')
+        try:
+            values = configured.stdout.decode().splitlines()
+            if len(values) != 1 or not values[0].strip():
+                raise GateError('private_profile_config_failed')
+            paths.append(Path(values[0].strip()).expanduser().resolve())
+        except Exception:
+            raise GateError('private_profile_config_failed') from None
+    if len(set(paths)) > 1:
+        raise GateError('private_profile_conflict')
+    return paths[0] if paths else None
+
+
 def configured_private_values(include_identifiers=True):
-    configured = run_git('config', '--local', '--get', 'easyops.securityProfile', check=False)
-    if configured.returncode == 1:
+    path = configured_profile_path()
+    if path is None:
         return [], []
-    if configured.returncode:
-        raise GateError('private_profile_config_failed')
     try:
-        path = Path(configured.stdout.decode().strip()).expanduser().resolve()
         if path.is_relative_to(ROOT) or not path.is_file() or path.stat().st_mode & 0o077:
             raise GateError('private_profile_must_be_external_and_private')
         profile = json.loads(path.read_text())
@@ -327,7 +345,7 @@ def scan(mode, stdin=''):
                 report('private_network_address', name, normalized[:hit.start()].count('\n') + 1)
         if re.search(r'data\s*:\s*(?:image|application|audio|video)/[^\s;,]+;base64\s*,', normalized, re.I):
             report('embedded_media_requires_review', name)
-    with tempfile.TemporaryDirectory(prefix='easyops-security-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='aiopsstudio-security-') as tmp:
         temporary = Path(tmp); content = temporary / 'content'; content.mkdir()
         mapping = {}
         for sha, (kind, body) in bodies.items():

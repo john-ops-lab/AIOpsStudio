@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from .config import ConfigError, ConfigService, redact, digest
 from .store import StoreConflict, utcnow
 from .identity import actor_id, require_admin, resource_owner, public_user
+from .compat import COOKIE_NAME, LEGACY_COOKIE_NAME, legacy_cookie_expiry
 
 
 def configure_api(app: FastAPI):
@@ -21,7 +22,7 @@ def configure_api(app: FastAPI):
     service: ConfigService = app.state.config
     control_locks: dict[str, asyncio.Lock] = {}
     login_failures: dict[str, list[float]] = {}
-    cookie_name = "easyops_session"
+    cookie_name = COOKIE_NAME
 
     async def json_body(request):
         value = await request.json()
@@ -64,8 +65,19 @@ def configure_api(app: FastAPI):
                 chunks.append(chunk)
             request._body = b"".join(chunks)
         token = request.cookies.get(cookie_name, "")
+        old_token = request.cookies.get(LEGACY_COOKIE_NAME, "")
+        if token and old_token and token != old_token:
+            response = JSONResponse({"detail": "检测到新旧登录会话冲突，请重新登录", "code": "session_cookie_conflict"}, status_code=401)
+            response.delete_cookie(cookie_name, path="/")
+            response.delete_cookie(LEGACY_COOKIE_NAME, path="/")
+            return response
+        using_legacy = not token and bool(old_token)
+        token = token or old_token
         sid = hashlib.sha256(token.encode()).hexdigest() if token else ""
         user = app.state.identity.session_user(sid)
+        legacy_expires = legacy_cookie_expiry(store.get("session", sid)) if using_legacy else 0
+        if using_legacy and legacy_expires <= time.time():
+            user = None
         request.state.user = user
         request.state.authenticated = user is not None
         request.state.session_id = sid
@@ -78,6 +90,11 @@ def configure_api(app: FastAPI):
             if restricted:
                 return JSONResponse({"detail": "此操作仅管理员可用"}, status_code=403)
         response = await call_next(request)
+        if old_token:
+            response.delete_cookie(LEGACY_COOKIE_NAME, path="/")
+        if user and using_legacy and request.url.path not in {"/api/login", "/api/logout"}:
+            response.set_cookie(cookie_name, token, httponly=True, secure=app.state.public_origin.startswith("https://"),
+                samesite="strict", max_age=max(0, int(legacy_expires - time.time())), path="/")
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -110,6 +127,7 @@ def configure_api(app: FastAPI):
         service.audit("login", "session", user["id"], actor=user["id"])
         response = JSONResponse({"authenticated": True, "user": user})
         response.set_cookie(cookie_name, token, httponly=True, secure=app.state.public_origin.startswith("https://"), samesite="strict", max_age=12 * 3600, path="/")
+        response.delete_cookie(LEGACY_COOKIE_NAME, path="/")
         return response
 
     @app.post("/api/logout")
@@ -118,6 +136,7 @@ def configure_api(app: FastAPI):
         service.audit("logout", "session", actor_id(request), actor=actor_id(request))
         response = JSONResponse({"authenticated": False, "user": None})
         response.delete_cookie(cookie_name, path="/")
+        response.delete_cookie(LEGACY_COOKIE_NAME, path="/")
         return response
 
     @app.get("/api/users")

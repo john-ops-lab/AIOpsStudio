@@ -17,7 +17,7 @@ def main():
         before = len(c.get('/api/runs').json()['items'])
         body = {'threadId': original['thread_id'], 'runId': str(uuid.uuid4()), 'state': {},
                 'messages': [], 'tools': [], 'context': [], 'forwardedProps': {'business_run_id': args.id}}
-        path = '/api/copilotkit/agent/easyops/run'
+        path = '/api/copilotkit/agent/aiopsstudio/run'
         rounds = []
         for _ in range(2):
             response = c.post(path, json=body)

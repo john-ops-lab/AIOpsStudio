@@ -9,10 +9,10 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-from easyops import connectors
-from easyops.config import ConfigService, Vault
-from easyops.runtime import Runtime, ExecutionStop, now
-from easyops.store import Store
+from aiopsstudio import connectors
+from aiopsstudio.config import ConfigService, Vault
+from aiopsstudio.runtime import Runtime, ExecutionStop, now
+from aiopsstudio.store import Store
 
 
 @pytest.fixture
@@ -613,7 +613,7 @@ def test_prometheus_summary_preserves_tail_drop_and_non_numeric_counts():
 
 
 def test_reference_validation_expands_only_unique_current_evidence_prefixes():
-    from easyops.runtime import validate_evidence_references
+    from aiopsstudio.runtime import validate_evidence_references
     first, second = "ev_" + "a1b2" + "a" * 28, "ev_" + "c3d4" + "b" * 28
     original = f"磁盘[ev_a1b2...]；业务[ev_c3d4…]；原始[{first}]。"
     normalized, result = validate_evidence_references(original, {first, second})

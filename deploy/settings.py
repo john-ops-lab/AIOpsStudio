@@ -5,10 +5,11 @@ import json
 import os
 from pathlib import Path
 import re
+from backend.aiopsstudio.compat import environment, state_directory, legacy_state, LEGACY_DATABASE
 
 
 DEFAULT_PORTS = {"web": 3000, "api": 8000, "postgres": 5432}
-DEFAULT_DATABASE = {"container": "easyops-db", "volume": "easyops-db-data", "user": "easyops", "name": "easyops", "image": "postgres:16-alpine"}
+DEFAULT_DATABASE = {"container": "aiopsstudio-db", "volume": "aiopsstudio-db-data", "user": "aiopsstudio", "name": "aiopsstudio", "image": "postgres:16-alpine"}
 
 
 def strict_json(text):
@@ -43,9 +44,10 @@ def _name(value, label):
 
 
 def load_config(path=None, environ=None):
-    """显式 JSON 路径或 EASYOPS_DEPLOY_CONFIG；未指定时使用通用默认值。"""
-    environ = os.environ if environ is None else environ
-    path = path or environ.get("EASYOPS_DEPLOY_CONFIG")
+    """显式 JSON 路径或 AIOPSSTUDIO_DEPLOY_CONFIG；未指定时使用通用默认值。"""
+    original_environment = os.environ if environ is None else environ
+    environ = environment(original_environment)
+    path = path or environ.get("AIOPSSTUDIO_DEPLOY_CONFIG")
     data = {}
     if path:
         try:
@@ -61,7 +63,15 @@ def load_config(path=None, environ=None):
         _port(value, f"ports.{name}")
     if len(set(ports.values())) != len(ports):
         raise ValueError("Web、API 和数据库端口不能重复")
-    database = {**DEFAULT_DATABASE, **_object(data.get("database", {}), DEFAULT_DATABASE, "database")}
+    state = state_directory(environ)
+    previous_state = legacy_state(state, original_environment)
+    database_config = _object(data.get("database", {}), DEFAULT_DATABASE, "database")
+    if (not previous_state and state != Path.home() / ".local/share/aiopsstudio"
+            and not environ.get("AIOPSSTUDIO_DATABASE_URL")
+            and not {"container", "volume", "user", "name"}.issubset(database_config)):
+        raise ValueError("自定义状态目录必须显式配置 AIOPSSTUDIO_DATABASE_URL 或完整 database 的 container、volume、user、name；未猜测或创建数据库")
+    defaults = LEGACY_DATABASE if previous_state else DEFAULT_DATABASE
+    database = {**defaults, **database_config}
     for key in ("container", "volume", "user", "name"):
         _name(database[key], f"database.{key}")
     if not isinstance(database["image"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/._:@-]{0,199}", database["image"]):
@@ -85,7 +95,4 @@ def load_config(path=None, environ=None):
         tunnel.setdefault("remote_host", "127.0.0.1")
         if not isinstance(tunnel["remote_host"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,252}", tunnel["remote_host"]):
             raise ValueError("SSH 转发 remote_host 格式不正确")
-    state = Path(environ.get("EASYOPS_STATE_DIR", str(Path.home() / ".local/share/easyops"))).expanduser()
-    if not state.is_absolute():
-        raise ValueError("EASYOPS_STATE_DIR 必须是绝对路径")
     return {"ports": ports, "database": database, "docker_context": context, "node_binary": node, "ssh_tunnel": tunnel, "state_dir": state}
