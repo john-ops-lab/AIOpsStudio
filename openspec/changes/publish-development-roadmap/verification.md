@@ -28,4 +28,7 @@
 - 变更文档中的 36 个相对文件/目录链接目标存在，`git diff --check` 通过。
 - 已审查实际暂存差异；暂存路线图与已复核的十三项范围/验收材料一致。完整暂存树通过敏感信息门禁，无命中。
 - 发布准备结束后复核 110 个原运行源文件、6 个私有文件、3 个进程身份及数据库配置/Git 状态，保持原基线。
-- 远端提交与对应安全 CI 的结果在推送完成后补充；未完成的检查不视为通过。
+- 文档发布提交 [bb4f41b](https://github.com/john-ops-lab/EasyOps/commit/bb4f41b5197b139cb074c47d33945dc8eef61284) 已推送，远端主分支与提交一致；10 个变更文档的 Git 对象逐一匹配，正式路线图正文读回一致。
+- 提交钩子检查实际暂存树，推送钩子检查包含新提交的完整历史，均无敏感信息命中。
+- 对应的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39913897296) 成功，`Complete public Git history` 与 `Synthetic Git regression` 均通过。
+- 本记录在上述发布验证后补充；后续提交应按其自身 SHA 核对 [安全工作流记录](https://github.com/john-ops-lab/EasyOps/actions/workflows/publication-security.yml)，不能直接复用本次结果。

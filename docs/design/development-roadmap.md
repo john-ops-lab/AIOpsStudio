@@ -2,6 +2,8 @@
 
 规划基线：2026-10-23。总路线图：[Issue #1](https://github.com/john-ops-lab/EasyOps/issues/1)；十三个实施 Issue 的实时状态以 GitHub 为准。本文件中的验收清单是交付条件，初始发布不表示已经完成。
 
+本次规划登记与脱敏检查见[发布验证记录](../../openspec/changes/publish-development-roadmap/verification.md)。
+
 本轮只发布规划与跟踪关系，应用当前行为仍以 [OpenSpec 主规格](../../openspec/specs/) 和[交付状态](../status.md)为准。后续范围变化同时更新对应 Issue、本文和适用 OpenSpec 变更；旧设计 P0–P4 与本路线图的映射见[总体设计第 12 节](EasyOps总体设计-v0.1.md#12-开发阶段与退出条件)。
 
 ## 现有基础与目标
