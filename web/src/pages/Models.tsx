@@ -283,6 +283,7 @@ function Settings({ models }: { models: Entity[] }) {
     [budget, setBudget] = useState("{}"),
     [source, setSource] = useState("{}"),
     [mapping, setMapping] = useState("{}"),
+    [catalog, setCatalog] = useState("{}"),
     [sourceSecret, setSourceSecret] = useState(""),
     [sourcePassword, setSourcePassword] = useState("");
   useEffect(() => {
@@ -293,6 +294,7 @@ function Settings({ models }: { models: Entity[] }) {
       );
       setSource(json(resource.data.ongrid || {}));
       setMapping(json(resource.data.identity_mapping || {}));
+      setCatalog(json(resource.data.query_catalog || {}));
     }
   }, [resource.data]);
   if (resource.loading) return <Loading />;
@@ -332,6 +334,7 @@ function Settings({ models }: { models: Entity[] }) {
                     : {}),
                 },
                 identity_mapping: parseJson(mapping, "身份映射", "object"),
+                query_catalog: parseJson(catalog, "查询目录", "object"),
                 expected_revision: settings.revision,
               });
               setSourceSecret("");
@@ -430,7 +433,7 @@ function Settings({ models }: { models: Entity[] }) {
             />
           </Field>
           <div className="span-2">
-            <Field label="环境与身份映射（JSON）">
+            <Field label="环境与身份映射（JSON）" hint="版本化 records 须登记完整对象键、source_id、原生 ID、映射来源与有效期；未配置或旧格式会要求补充，不会猜测目标。">
               <textarea
                 aria-label="环境与身份映射JSON"
                 className="code-input medium"
@@ -440,6 +443,7 @@ function Settings({ models }: { models: Entity[] }) {
               />
             </Field>
           </div>
+          <div className="span-2"><Field label="查询目录（JSON）" hint="版本化 entries 须明确绑定 source_id、tool_name、工具定义摘要、身份和时间参数；source_offsets 登记源时钟偏差。未登记工具不能自动查询对象。"><textarea aria-label="查询目录JSON" className="code-input medium" value={catalog} onChange={(event) => setCatalog(event.target.value)} spellCheck={false} /></Field></div>
         </div>
         <div className="form-actions">
           <Button variant="primary" type="submit" busy={!!state.busy}>
@@ -450,6 +454,19 @@ function Settings({ models }: { models: Entity[] }) {
       </form>
     </section>
   );
+}
+function PolicyEditor({ kind }: { kind: "source" | "egress" }) {
+  const resource = useResource(`/access-policies/${kind}`), action = useAction();
+  const [draft, setDraft] = useState("{}");
+  const title = kind === "source" ? "数据源读取授权" : "模型数据出站规则";
+  useEffect(() => {
+    if (!resource.data) return;
+    const { configured, revision, id, created_at, updated_at, ...policy } = resource.data;
+    void revision; void id; void created_at; void updated_at;
+    setDraft(json(configured === false ? kind === "source" ? { schema: "source-access/v1", version: "draft-1", enabled: false, grants: [], denies: [] } : { schema: "model-egress/v1", version: "draft-1", enabled: false, model_bindings: [], types: {}, denied_types: [] } : resource.data.policy || policy));
+  }, [resource.data, kind]);
+  const enabled = resource.data?.policy?.enabled ?? resource.data?.enabled;
+  return <section className="surface settings-surface policy-editor"><div className="section-heading"><div><h2>{title}</h2><p>{kind === "source" ? "按主体、来源、目标、环境、工具和用途明确授权；管理员角色本身不授予源数据读取权。" : "按材料类型和字段约束模型可见内容；标识替换不改变真实源查询参数。"}</p></div><Status value={resource.data?.configured === false ? "unknown" : enabled ? "enabled" : "disabled"}>{resource.data?.configured === false ? "尚未配置" : enabled ? "已启用" : "未启用"}</Status></div><Notice error={resource.error || action.error} message={action.notice} />{resource.loading ? <Loading /> : resource.data ? <form className="stack" onSubmit={(event) => { event.preventDefault(); void action.act("save", async () => { const policy = parseJson(draft, title, "object"); const result = await put(`/access-policies/${kind}`, { policy, expected_revision: resource.data?.revision ?? 0 }); resource.setData(result); }, `${title}已保存`); }}><Field label={`${title}（JSON）`} hint="保存使用独立修订检查。未配置、禁用或匹配不到规则时拒绝操作；下方初始草稿保持禁用。请勿在规则中填写密钥正文。"><textarea className="code-input medium" aria-label={`${title}JSON`} value={draft} onChange={(event) => setDraft(event.target.value)} spellCheck={false} /></Field><div className="form-actions"><Button type="submit" variant="primary" busy={!!action.busy}><Save size={15} />保存{title}</Button></div></form> : null}</section>;
 }
 export default function Models({ onRun }: { onRun: (run: Run) => void }) {
   const resource = useResource("/model-configs", 8000),
@@ -513,6 +530,8 @@ export default function Models({ onRun }: { onRun: (run: Run) => void }) {
         </section>
       </div>
       <Settings models={list(resource.data)} />
+      <PolicyEditor kind="source" />
+      <PolicyEditor kind="egress" />
       {create ? (
         <CreateModel
           onClose={() => setCreate(false)}

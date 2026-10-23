@@ -8,13 +8,14 @@ import secrets
 import time
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .config import ConfigError, ConfigService, redact, digest
 from .store import StoreConflict, utcnow
 from .identity import actor_id, require_admin, resource_owner, public_user
 from .compat import COOKIE_NAME, LEGACY_COOKIE_NAME, legacy_cookie_expiry
+from .access_policy import PolicyError, PolicyService
 
 
 def configure_api(app: FastAPI):
@@ -32,6 +33,35 @@ def configure_api(app: FastAPI):
 
     def public(value):
         return redact(value, vault)
+
+    def catalog_view(kind, item, request):
+        if request.state.user.get("role") == "admin":
+            return public(item)
+        if not item.get("current_version") or item.get("enabled") is False or item.get("blocked"):
+            return None
+        if kind == "mcp":
+            try:
+                PolicyService(store).authorize_source(subject_id=actor_id(request), source_id=item["id"],
+                    tool_name="$catalog", config=item, arguments={}, target=None,
+                    environment=(store.get("settings", "main") or {}).get("environment"), purpose="discovery")
+            except PolicyError:
+                return None
+        fields = {"id", "name", "display_name", "enabled", "blocked", "current_version"}
+        if kind == "model":
+            fields |= {"model", "provider"}
+        return {key: value for key, value in item.items() if key in fields}
+
+    def history_visible(record, owner):
+        if resource_owner(record) != owner:
+            return False
+        authorize = getattr(getattr(app.state, "runtime", None), "authorize_history", None)
+        if not callable(authorize):
+            return not (record.get("evidence") or record.get("history_context") or record.get("report"))
+        try:
+            authorize(record, owner, allow_legacy_archive=True)
+            return True
+        except (HTTPException, PolicyError):
+            return False
 
     @app.exception_handler(ConfigError)
     async def configuration_error(request, error):
@@ -160,16 +190,19 @@ def configure_api(app: FastAPI):
 
     def register(kind, path):
         @app.get(path, name=f"list_{kind}")
-        async def listing():
-            return {"items": public(store.list(kind))}
+        async def listing(request: Request):
+            return {"items": [view for item in store.list(kind) if (view := catalog_view(kind, item, request)) is not None]}
 
         @app.post(path, name=f"create_{kind}")
         async def create(request: Request):
             return public(service.save(kind, await json_body(request)))
 
         @app.get(path + "/{id}", name=f"get_{kind}")
-        async def read(id: str):
-            return public(service.require(kind, id))
+        async def read(id: str, request: Request):
+            view = catalog_view(kind, service.require(kind, id), request)
+            if view is None:
+                raise HTTPException(404, "配置不存在或当前不可访问")
+            return view
 
         @app.put(path + "/{id}", name=f"save_{kind}")
         async def update(id: str, request: Request):
@@ -187,7 +220,8 @@ def configure_api(app: FastAPI):
             return public(service.state(kind, id, await json_body(request)))
 
         @app.get(path + "/{id}/versions", name=f"versions_{kind}")
-        async def versions(id: str):
+        async def versions(id: str, request: Request):
+            require_admin(request)
             return {"items": public(service.require(kind, id).get("versions", []))}
 
         @app.post(path + "/{id}/rollback", name=f"rollback_{kind}")
@@ -207,8 +241,9 @@ def configure_api(app: FastAPI):
     register("mcp", "/api/mcp-servers")
     register("model", "/api/model-configs")
 
-    async def control(id: str, discover: bool):
+    async def control(id: str, discover: bool, request: Request):
         from . import connectors
+        require_admin(request)
         lock = control_locks.setdefault(id, asyncio.Lock())
         if lock.locked():
             return JSONResponse({"detail": "该服务已有连接检查正在进行", "code": "control_request_in_progress"}, status_code=409)
@@ -216,9 +251,34 @@ def configure_api(app: FastAPI):
             config = service.require("mcp", id)
             expected = config["revision"]
             snapshot = copy.deepcopy(config)
+            policy = getattr(app.state, "policy", None) or PolicyService(store)
+            def authorize():
+                try:
+                    actor = actor_id(request)
+                    identity = app.state.identity.session_user(request.state.session_id)
+                    if not identity or identity.get("id") != actor:
+                        raise PolicyError("policy_source_subject_revoked")
+                    current = service.require("mcp", id)
+                    if current.get("blocked"):
+                        raise PolicyError("policy_source_blocked")
+                    if any(current.get(key) != snapshot.get(key) for key in ("url", "secret_id", "password_secret_id", "auth_type", "auth_header", "headers", "verify_tls", "ca_file", "tls_ca_file")):
+                        raise PolicyError("policy_source_configuration_changed")
+                    for field in ("secret_id", "password_secret_id"):
+                        if snapshot.get(field):
+                            try:
+                                vault.get(snapshot[field])
+                            except ConfigError:
+                                raise PolicyError("policy_source_credential_revoked") from None
+                    return policy.authorize_source(subject_id=actor, source_id=id, tool_name="$catalog", config=snapshot,
+                        arguments={}, target=None, environment=(store.get("settings", "main") or {}).get("environment"), purpose="discovery")
+                except PolicyError as error:
+                    service.audit("source_access_denied", "mcp", id, {"code": error.code, "purpose": "discovery"}, actor=actor_id(request))
+                    raise
+            authorize()
             start = time.monotonic()
             try:
-                result = await asyncio.wait_for(connectors.mcp_discover(snapshot, vault), timeout=min(config.get("timeout_seconds", 30), 120) + 5)
+                result = await asyncio.wait_for(connectors.mcp_discover(snapshot, vault, request_observer=authorize), timeout=min(config.get("timeout_seconds", 30), 120) + 5)
+                authorize()  # A response in flight cannot bypass a newer revoke.
                 complete = result.get("complete", False)
                 check = {"status": "succeeded" if complete else "partial", "complete": complete, "checked_at": utcnow(), "duration_ms": round((time.monotonic() - start) * 1000), "server_info": result.get("server_info"), "protocol_version": result.get("protocol_version"), "configuration_digest": digest(snapshot)}
                 config["last_probe"] = check
@@ -242,10 +302,10 @@ def configure_api(app: FastAPI):
                 saved = store.save("mcp", id, config, expected)
                 service.audit("discover" if discover else "probe", "mcp", id, check)
                 return public({**check, "items": config.get("candidate_tools", []) if discover else [], "config": saved})
-            except StoreConflict:
+            except (StoreConflict, PolicyError):
                 raise
             except Exception as error:
-                check = {"status": "failed", "complete": False, "checked_at": utcnow(), "duration_ms": round((time.monotonic() - start) * 1000), "error": public(str(error))[:2000]}
+                check = {"status": "failed", "complete": False, "checked_at": utcnow(), "duration_ms": round((time.monotonic() - start) * 1000), "error": "源连接、协议或目录核对失败；内部错误未公开"}
                 latest = store.get("mcp", id)
                 if latest and latest["revision"] == expected:
                     latest.update(last_probe=check)
@@ -254,15 +314,16 @@ def configure_api(app: FastAPI):
                 return JSONResponse({"detail": "MCP 连接检查失败", "code": "mcp_probe_failed", "check": check}, status_code=502)
 
     @app.post("/api/mcp-servers/{id}/probe")
-    async def probe(id: str):
-        return await control(id, False)
+    async def probe(id: str, request: Request):
+        return await control(id, False, request)
 
     @app.post("/api/mcp-servers/{id}/discover")
-    async def discover(id: str):
-        return await control(id, True)
+    async def discover(id: str, request: Request):
+        return await control(id, True, request)
 
     @app.get("/api/mcp-servers/{id}/tools")
-    async def tools(id: str):
+    async def tools(id: str, request: Request):
+        require_admin(request)
         config = service.require("mcp", id)
         return {"items": public(config.get("tools", [])), "complete": config.get("discovery", {}).get("complete", False)}
 
@@ -277,8 +338,12 @@ def configure_api(app: FastAPI):
         return public(result)
 
     @app.get("/api/settings")
-    async def settings():
-        return public(service.require("settings", "main"))
+    async def settings(request: Request):
+        item = service.require("settings", "main")
+        if request.state.user.get("role") == "admin":
+            return public(item)
+        default = store.get("model", item.get("default_model_id", ""))
+        return {"default_model_id": default["id"] if default and catalog_view("model", default, request) else None}
 
     @app.put("/api/settings")
     async def update_settings(request: Request):
@@ -301,7 +366,7 @@ def configure_api(app: FastAPI):
     @app.get("/api/overview")
     async def overview(request: Request):
         owner_id = actor_id(request)
-        runs = sorted([r for r in store.list("run") if resource_owner(r) == owner_id], key=lambda r: r.get("created_at", ""), reverse=True)
+        runs = sorted([r for r in store.list("run") if history_visible(r, owner_id)], key=lambda r: r.get("created_at", ""), reverse=True)
         running = [r for r in runs if r.get("status") == "running"]
         queued = [r for r in runs if r.get("status") == "queued"]
         owned_runs = {run["id"] for run in runs}
@@ -311,8 +376,10 @@ def configure_api(app: FastAPI):
             if run is None:
                 return None
             runtime = getattr(app.state, "runtime", None)
-            source = runtime.public(run) if runtime else run
-            allowed = {"id", "thread_id", "conversation_id", "attempt_id", "purpose", "title", "status", "skill_id", "skill_version", "target", "incident_id", "analysis_start", "analysis_end", "created_at", "updated_at", "error", "usage", "cancel_requested", "report_attachment"}
+            source = runtime.public(run, allow_legacy_archive=True) if runtime else run
+            allowed = {"id", "thread_id", "conversation_id", "attempt_id", "purpose", "title", "status", "skill_id", "skill_version", "target", "incident_id", "analysis_start", "analysis_end", "created_at", "updated_at", "error", "usage", "cancel_requested", "report_attachment", "legacy_archive"}
             return {key: value for key, value in source.items() if key in allowed}
-        counts = {"skills": len(store.list("skill")), "mcp_servers": len(store.list("mcp")), "models": len(store.list("model")), "runs": len(runs), "evidence": len(evidence)}
-        return public({"counts": counts, "queue": {"running": len(running), "queued": len(queued), "waiting": len(queued), "limit": 10, "current": run_projection(running[0]) if running else None}, "services": [{"id": m["id"], "name": m["name"], "type": "mcp", "status": m.get("last_probe", {}).get("status", "unchecked"), "enabled": m.get("enabled", False), "checked_at": m.get("last_probe", {}).get("checked_at")} for m in store.list("mcp")] + [{"id": "glpi", "name": "GLPI", "type": "ticket", "status": "not_connected", "detail": "未接入"}], "recent_runs": [run_projection(r) for r in runs[:10]], "storage": {"evidence_bytes": storage_bytes, "quota_bytes": service.require("settings", "main")["storage_quota_bytes"], "database": "sqlite_test" if store.sqlite else "postgresql", "measurement": "stored_evidence_metadata"}})
+        visible_mcps = [m for item in store.list("mcp") if (m := catalog_view("mcp", item, request)) is not None]
+        counts = {"skills": sum(catalog_view("skill", item, request) is not None for item in store.list("skill")), "mcp_servers": len(visible_mcps),
+            "models": sum(catalog_view("model", item, request) is not None for item in store.list("model")), "runs": len(runs), "evidence": len(evidence)}
+        return public({"counts": counts, "queue": {"running": len(running), "queued": len(queued), "waiting": len(queued), "limit": 10, "current": run_projection(running[0]) if running else None}, "services": [{"id": m["id"], "name": m["name"], "type": "mcp", "status": m.get("last_probe", {}).get("status", "unchecked"), "enabled": m.get("enabled", False), "checked_at": m.get("last_probe", {}).get("checked_at")} for m in visible_mcps] + [{"id": "glpi", "name": "GLPI", "type": "ticket", "status": "not_connected", "detail": "未接入"}], "recent_runs": [run_projection(r) for r in runs[:10]], "storage": {"evidence_bytes": storage_bytes, "quota_bytes": service.require("settings", "main")["storage_quota_bytes"], "database": "sqlite_test" if store.sqlite else "postgresql", "measurement": "stored_evidence_metadata"}})

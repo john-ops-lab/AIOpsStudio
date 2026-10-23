@@ -15,6 +15,7 @@ from aiopsstudio.main import create_app
 from aiopsstudio.runtime import configure_runtime
 from aiopsstudio.store import Store
 from aiopsstudio.attachments import FILE_LIMIT, USER_LIMIT
+from m1_fixtures import seed_policies
 
 ADMIN_PASSWORD = "admin-test-password-long"
 USER_PASSWORD = "operator-test-password-long"
@@ -203,8 +204,11 @@ def test_finish_reconciliation_reports_idempotent_and_unconsumed_message_visible
 
 
 def test_overview_filters_owner_and_never_contains_private_snapshot_paths(chat):
+    source = {"id": "server_fixture", "url": "http://127.0.0.1:1/mcp"}
+    seed_policies(chat.store, model=chat.store.list("model")[0], server=source, subjects=["admin", chat.user["id"]])
     for owner in ("admin", chat.user["id"]):
-        chat.store.save("run", "overview-" + owner, {"owner_id": owner, "status": "running", "title": owner + " private", "created_at": "2026-10-22", "config_snapshot": {"secret_id": "hidden-ref"}, "user_materials": [{"text": "private-reading"}], "history_context": {"text": "private-history"}, "evidence": [{"path": "/private/path"}]})
+        scope = chat.app.state.policy.authorize_source(subject_id=owner, source_id=source["id"], tool_name="read_fixture", config=source, arguments={}, purpose="investigation")
+        chat.store.save("run", "overview-" + owner, {"owner_id": owner, "trust_version": "trusted-runtime/1", "policy_snapshot": chat.app.state.policy.snapshot(), "status": "running", "title": owner + " private", "created_at": "2026-10-22", "config_snapshot": {"secret_id": "hidden-ref"}, "user_materials": [{"text": "private-reading"}], "history_context": {"text": "private-history"}, "evidence": [{"id": "evidence-" + owner, "owner_id": owner, "access_scopes": [scope], "path": "/private/path"}]})
     response = chat.operator.get("/api/overview")
     assert response.status_code == 200
     assert response.json()["counts"]["runs"] == 1
@@ -237,10 +241,11 @@ def test_report_artifact_failure_keeps_assistant_body_and_explicit_error(chat, m
 def test_client_message_id_cannot_shadow_server_assistant_key(chat):
     conv = conversation(chat.operator)
     service = chat.app.state.conversations
+    chat.store.save("run", "fixture-server-run", {"owner_id": chat.user["id"], "conversation_id": conv["id"], "thread_id": conv["id"], "status": "running", "evidence": [], "messages": []})
     user = service.append_message(conv["id"], chat.user["id"], "user", "用户正文", "run:fixture")
-    assistant = service.append_message(conv["id"], chat.user["id"], "assistant", "助手正文", "run:fixture")
+    assistant = service.append_message(conv["id"], chat.user["id"], "assistant", "助手正文", "run:fixture", run_id="fixture-server-run")
     assert user["id"] != assistant["id"]
-    assert service.append_message(conv["id"], chat.user["id"], "assistant", "不覆盖原正文", "run:fixture")["id"] == assistant["id"]
+    assert service.append_message(conv["id"], chat.user["id"], "assistant", "不覆盖原正文", "run:fixture", run_id="fixture-server-run")["id"] == assistant["id"]
 
 
 def test_old_session_admin_history_and_actual_request_limit(chat):

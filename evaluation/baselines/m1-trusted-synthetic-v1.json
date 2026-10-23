@@ -1,0 +1,786 @@
+{
+  "schema": "aiopsstudio-public-evaluation-comparison/1",
+  "measurement_date": "2026-10-23",
+  "suite": "evaluation/m1/suite.json",
+  "measurement_kind": "synthetic_HTTP_model_and_source",
+  "execution": "actual_FastAPI_routes_DeepAgents_worker_ChatOpenAI_HTTP_MockTransport",
+  "baseline_ref": "bd9a949cff85e2f5b00b5dfd43d323909bfd0a1f",
+  "candidate_application_code_sha256": "0a7b426a16ecc27723e98bacaaef0d37729eaba445535473811ad990d5473a94",
+  "comparability": {
+    "suite_sha256": "0944b27255e922fbda1c7b1250dab647f71c00b685750cb9a5a4a99a6bab2c79",
+    "frozen_sha256": "9a17a1d6e49d6b1a9a25cc0746468fed1d1851ca8c325b88ffba14a219551b50",
+    "scorer_sha256": "c2e28b3dcd25f02640e47484719cd227458044ba4e6af239e039e8095321b02b",
+    "model_identity": {
+      "mode": "synthetic",
+      "version": {
+        "version": "m1-model/1",
+        "sha256": "2a03a0a90458cf5a7ae93ef257f2faf7384bf248161294fb2d3ab3fffdb0262a"
+      },
+      "adapter_sha256": "5fb0a6cb676dfe465ed2490d571a42f8379a13def802bb3c52019e00737cee39"
+    },
+    "visibility": "only_fixed_request_and_actual_tool_reading_views"
+  },
+  "baseline": {
+    "cases": {
+      "total": 18,
+      "strict_passed": 7,
+      "strict_failed": 11,
+      "not_run": 0
+    },
+    "assertions": {
+      "passed": 83,
+      "failed": 16,
+      "unknown": 6,
+      "total": 105
+    },
+    "dimensions": {
+      "facts": {
+        "passed": 5,
+        "failed": 1,
+        "unknown": 1,
+        "total": 7
+      },
+      "omissions": {
+        "passed": 6,
+        "failed": 1,
+        "unknown": 0,
+        "total": 7
+      },
+      "causality": {
+        "passed": 17,
+        "failed": 0,
+        "unknown": 0,
+        "total": 17
+      },
+      "coverage": {
+        "passed": 5,
+        "failed": 2,
+        "unknown": 2,
+        "total": 9
+      },
+      "references": {
+        "passed": 16,
+        "failed": 0,
+        "unknown": 0,
+        "total": 16
+      },
+      "boundaries": {
+        "passed": 34,
+        "failed": 12,
+        "unknown": 3,
+        "total": 49
+      }
+    },
+    "failure_classes": {
+      "omission": 1,
+      "unverified_capability": 5,
+      "model_failure": 1,
+      "factual_error": 2,
+      "privacy_violation": 3,
+      "authorization_violation": 5,
+      "recovery_gap": 1,
+      "coverage_overclaim": 4
+    }
+  },
+  "candidate": {
+    "cases": {
+      "total": 18,
+      "strict_passed": 15,
+      "strict_failed": 3,
+      "not_run": 0
+    },
+    "assertions": {
+      "passed": 102,
+      "failed": 0,
+      "unknown": 3,
+      "total": 105
+    },
+    "dimensions": {
+      "facts": {
+        "passed": 7,
+        "failed": 0,
+        "unknown": 0,
+        "total": 7
+      },
+      "omissions": {
+        "passed": 7,
+        "failed": 0,
+        "unknown": 0,
+        "total": 7
+      },
+      "causality": {
+        "passed": 17,
+        "failed": 0,
+        "unknown": 0,
+        "total": 17
+      },
+      "coverage": {
+        "passed": 9,
+        "failed": 0,
+        "unknown": 0,
+        "total": 9
+      },
+      "references": {
+        "passed": 16,
+        "failed": 0,
+        "unknown": 0,
+        "total": 16
+      },
+      "boundaries": {
+        "passed": 46,
+        "failed": 0,
+        "unknown": 3,
+        "total": 49
+      }
+    },
+    "failure_classes": {
+      "authorization_violation": 1,
+      "unverified_capability": 1,
+      "recovery_gap": 1
+    }
+  },
+  "critical_regressions": 0,
+  "repeat_consistency": {
+    "baseline": {
+      "repeated_cases": 18,
+      "identical_scores": 18
+    },
+    "prior_frozen_candidate": {
+      "application_code_sha256": "5f7b95a36a62cf89f45a8d7bb36f2bacef62be3fdad0cf4c13f07df83ebebdc7",
+      "repeated_cases": 18,
+      "identical_scores": 18
+    },
+    "final_candidate": {
+      "attempts_per_case": 1,
+      "cases": 18,
+      "identical_scores_to_prior_frozen_candidate": 18,
+      "reason": "full candidate replay after final operator access-boundary changes; reuses unchanged frozen baseline"
+    },
+    "first_attempts_define_totals": true,
+    "retries_replace_first_failures": false
+  },
+  "results": [
+    {
+      "case_id": "normal-alert",
+      "category": "normal",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "missing-data",
+      "category": "missing",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "stale-data",
+      "category": "stale",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "second-series-tail",
+      "category": "multi_series_tail",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R03",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "raw-tail-fragment",
+      "category": "raw_tail",
+      "work_packages": [
+        "R01",
+        "R03",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 2,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [
+          "tail_fact_is_read",
+          "actual_fragment_receipt"
+        ],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "paginated-source",
+      "category": "pagination",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R03",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "identity-ambiguous",
+      "category": "identity_ambiguity",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "source-interface-failure",
+      "category": "source_failure",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "model-interface-failure",
+      "category": "model_failure",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 1,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [
+          "model_failure_has_error"
+        ],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 5,
+          "failed": 0,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "irrelevant-evidence",
+      "category": "irrelevant_evidence",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 1,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [
+          "do_not_promote_unrelated_fact"
+        ],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 5,
+          "failed": 0,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "model-egress-boundary",
+      "category": "egress",
+      "work_packages": [
+        "R01",
+        "R07"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 2,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [
+          "private_marker_not_in_model_bytes",
+          "egress_policy_receipt"
+        ],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "sharing-revocation",
+      "category": "sharing_revocation",
+      "work_packages": [
+        "R01",
+        "R07",
+        "R13"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "share_revoke_reader_denied"
+        ]
+      },
+      "candidate": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "share_revoke_reader_denied"
+        ]
+      }
+    },
+    {
+      "case_id": "human-verdict",
+      "category": "human_verdict",
+      "work_packages": [
+        "R01",
+        "R12"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "verdict_is_separate"
+        ]
+      },
+      "candidate": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "verdict_is_separate"
+        ]
+      }
+    },
+    {
+      "case_id": "references-on-demand",
+      "category": "references",
+      "work_packages": [
+        "R01",
+        "R03",
+        "R05"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 2,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [
+          "unread_reference_not_sent",
+          "reference_read_receipt"
+        ],
+        "unverified_assertions": []
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 6,
+          "failed": 0,
+          "unknown": 0,
+          "total": 6
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "consistent-recovery",
+      "category": "recovery",
+      "work_packages": [
+        "R01",
+        "R08",
+        "R09"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "restored_owner_and_evidence"
+        ]
+      },
+      "candidate": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 0,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": [
+          "restored_owner_and_evidence"
+        ]
+      }
+    },
+    {
+      "case_id": "mapping-unresolved",
+      "category": "mapping-unresolved",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R07"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 1,
+          "failed": 3,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [
+          "identity_blocks_execution",
+          "no_model_dispatch",
+          "no_source_dispatch"
+        ],
+        "unverified_assertions": [
+          "specific_identity_issue"
+        ]
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 5,
+          "failed": 0,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "mapping-ambiguous",
+      "category": "mapping-ambiguous",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R07"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 1,
+          "failed": 3,
+          "unknown": 1,
+          "total": 5
+        },
+        "failed_assertions": [
+          "identity_blocks_execution",
+          "no_model_dispatch",
+          "no_source_dispatch"
+        ],
+        "unverified_assertions": [
+          "specific_identity_issue"
+        ]
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 5,
+          "failed": 0,
+          "unknown": 0,
+          "total": 5
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    },
+    {
+      "case_id": "requested-skill-reference",
+      "category": "requested_reference",
+      "work_packages": [
+        "R01",
+        "R03",
+        "R07"
+      ],
+      "baseline": {
+        "strict_pass": false,
+        "assertions": {
+          "passed": 4,
+          "failed": 2,
+          "unknown": 1,
+          "total": 7
+        },
+        "failed_assertions": [
+          "requested_reference_actually_read",
+          "reference_only_after_read"
+        ],
+        "unverified_assertions": [
+          "reference_is_not_source_fact"
+        ]
+      },
+      "candidate": {
+        "strict_pass": true,
+        "assertions": {
+          "passed": 7,
+          "failed": 0,
+          "unknown": 0,
+          "total": 7
+        },
+        "failed_assertions": [],
+        "unverified_assertions": []
+      }
+    }
+  ],
+  "retained_first_matrix": {
+    "candidate_cases": {
+      "total": 18,
+      "strict_passed": 14,
+      "strict_failed": 4
+    },
+    "candidate_assertions": {
+      "passed": 101,
+      "failed": 1,
+      "unknown": 3,
+      "total": 105
+    },
+    "reason": "fixed synthetic reading schema omitted two declared window.reason metadata paths; guard correctly rejected; first observations retained externally",
+    "repair_is_product_improvement": false
+  },
+  "limitations": [
+    "Only the two runs of this same M1 suite and adapter are comparable. Legacy 15/88 measurements use another fixture/adapter and remain separate.",
+    "Future sharing/revocation, human verdict and consistent restore remain unverified and strict-failing.",
+    "Strict cases assess frozen synthetic assertions, not root-cause correctness rates or live business acceptance.",
+    "No raw run/evidence/config identifiers, model payloads, receipts, private paths or receipt hashes are published.",
+    "Cost has no frozen price schedule and remains unknown."
+  ]
+}

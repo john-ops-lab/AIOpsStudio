@@ -53,10 +53,15 @@ export const list = (data: unknown): Entity[] =>
     : Array.isArray((data as Entity)?.items)
       ? (data as Entity).items
       : [];
+export function invalidatesResource(error: unknown): boolean {
+  return error instanceof ApiError && ([401, 403, 404].includes(error.status)
+    || error.status === 503 && Boolean(error.code?.startsWith("policy_missing") || error.code?.startsWith("policy_unavailable")));
+}
 export function useResource<T = Entity>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [accessDenied, setAccessDenied] = useState(false);
   const seq = useRef(0),
     mounted = useRef(false);
   const reload = useCallback(async () => {
@@ -66,11 +71,15 @@ export function useResource<T = Entity>(path: string | null, interval = 0) {
       const value = await api<T>(path);
       if (mounted.current && current === seq.current) {
         setData(value);
+        setAccessDenied(false);
         setError("");
       }
       return value;
     } catch (err) {
-      if (mounted.current && current === seq.current) setError(errorText(err));
+      if (mounted.current && current === seq.current) {
+        setError(errorText(err));
+        if (invalidatesResource(err)) { setData(null); setAccessDenied(true); }
+      }
       return null;
     } finally {
       if (mounted.current && current === seq.current) setLoading(false);
@@ -79,6 +88,7 @@ export function useResource<T = Entity>(path: string | null, interval = 0) {
   useEffect(() => {
     mounted.current = true;
     setData(null);
+    setAccessDenied(false);
     setError("");
     setLoading(Boolean(path));
     if (path) void reload();
@@ -94,7 +104,7 @@ export function useResource<T = Entity>(path: string | null, interval = 0) {
       window.clearInterval(timer);
     };
   }, [reload, interval, path]);
-  return { data, error, loading, reload, setData };
+  return { data, error, loading, accessDenied, reload, setData };
 }
 export function useAction() {
   const inFlight = useRef(false);

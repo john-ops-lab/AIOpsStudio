@@ -29,7 +29,17 @@ export default function Workbench({ selected, initialMessage = "", onSelect, onC
   const activeResource = useResource<Run>(currentRun && activeRun(currentRun.status) && currentRun.id !== selectedRun ? `/runs/${encodeURIComponent(currentRun.id)}` : null, 4000);
   const liveRun = currentRun?.id === selectedRun ? runResource.data : activeResource.data;
   const attachments = conversation.data?.attachments || [];
+  const archived = Boolean(conversation.data?.legacy_archive);
   const artifactError = liveRun?.artifact_error || liveRun?.report_attachment_error || currentRun?.artifact_error || currentRun?.report_attachment_error || conversation.data?.report_attachment_error;
+  useEffect(() => {
+    if (conversation.accessDenied) {
+      hydratedId.current = null;
+      setContext({}); setTitle("会话不可访问"); setStaged([]); setSelectedRun(null);
+      setEvidence(null); setAttachmentsOpen(false); setContextOpen(false); setCanvasOpen(false);
+    }
+  }, [conversation.accessDenied]);
+  useEffect(() => { if (runResource.accessDenied) setEvidence(null); }, [runResource.accessDenied]);
+
   useEffect(() => {
     if (selected === activeId.current) return;
     activeId.current = selected; hydratedId.current = null; creating.current = null; createId.current = requestId(); pending.current = null;
@@ -123,15 +133,15 @@ export default function Workbench({ selected, initialMessage = "", onSelect, onC
       </div>
       <div className="conversation-notices"><Notice error={conversation.error || skillsResource.error || modelsResource.error || uploadError} message={state.notice} />{artifactError ? <Notice error={`回复或报告制品保存失败：${textValue(artifactError)}`} /> : null}{currentActiveId ? <Button variant="ghost" busy={state.busy === "cancel"} onClick={() => void state.act("cancel", async () => { await post(`/runs/${encodeURIComponent(currentActiveId)}/cancel`); await refresh(activeId.current!); }, "已提交本轮取消请求。 ")}><StopCircle size={14} />取消当前轮</Button> : null}{conversation.error ? <Button onClick={() => void conversation.reload()}><RefreshCw size={14} />重新加载</Button> : null}</div>
       {conversation.loading ? <Loading /> : <MessageTimeline messages={conversation.data?.messages || []} runs={runs} attachments={attachments} liveRun={liveRun || currentRun} onOpenReport={openRun} onEvidence={openEvidence} onEvents={(id) => openRun(id, "events")} onFollowup={(value) => { setMessage(value); document.getElementById("analysis-message")?.focus(); }} />}
-      <Composer value={message} onChange={setMessage} onSend={() => void send()} busy={state.busy === "send"} uploading={uploading} attachments={attachments} selectedAttachments={staged} onRemoveAttachment={(id) => setStaged((items) => items.filter((a) => a !== id))} onUpload={(files) => void upload(files)} onContext={() => setContextOpen(true)} onTools={() => setToolsOpen(true)} models={models} modelId={context.model_id || ""} onModel={(id) => setContext((c) => ({ ...c, model_id: id }))} skillName={selectedSkill?.display_name || selectedSkill?.name} active={Boolean(currentActiveId)} error={state.error} />
+      {archived ? <p className="scope-note" role="status">升级前历史只读档案：原内容与附件保留，来源未按新契约核验。继续分析请新建会话，旧材料不会自动送入模型。</p> : <Composer value={message} onChange={setMessage} onSend={() => void send()} busy={state.busy === "send"} uploading={uploading} attachments={attachments} selectedAttachments={staged} onRemoveAttachment={(id) => setStaged((items) => items.filter((a) => a !== id))} onUpload={(files) => void upload(files)} onContext={() => setContextOpen(true)} onTools={() => setToolsOpen(true)} models={models} modelId={context.model_id || ""} onModel={(id) => setContext((c) => ({ ...c, model_id: id }))} skillName={selectedSkill?.display_name || selectedSkill?.name} active={Boolean(currentActiveId)} error={state.error} />}
     </main>
     {canvasOpen ? <div id="workbench-canvas" className="canvas-host"><AnalysisCanvas run={runResource.data} runs={runs} attachments={attachments} selected={selectedRun} onSelect={setSelectedRun} tab={tab} onTab={setTab} onClose={() => setCanvasOpen(false)} onEvidence={(id) => openEvidence(id, selectedRun || undefined)} loading={runResource.loading} error={runResource.error} /></div> : null}
-    {contextOpen ? <ContextEditor context={context} title={title} skills={skills} models={models} onClose={() => setContextOpen(false)} onSave={async (value, name) => {
+    {contextOpen && !archived ? <ContextEditor context={context} title={title} skills={skills} models={models} onClose={() => setContextOpen(false)} onSave={async (value, name) => {
       if (selected) { const result = await put<Conversation>(`/conversations/${encodeURIComponent(selected)}`, { context: value, title: name, expected_revision: conversation.data?.revision }); conversation.setData(result); onChanged(); }
       setContext(value); setTitle(name.trim() || "新会话");
     }} /> : null}
     {toolsOpen ? <Modal title="本轮工具范围" onClose={() => setToolsOpen(false)}><p>实际工具由所选 Skill 的依赖绑定和 MCP 只读白名单共同限定。会话声明不能扩大工具权限。</p>{selectedSkill ? <JsonView title="所选 Skill 依赖" open value={selectedSkill.dependencies || []} /> : <p className="scope-note">尚未选择可用 Skill，请先补充上下文。</p>}</Modal> : null}
-    {attachmentsOpen ? <Modal title="会话附件" onClose={() => setAttachmentsOpen(false)} wide><p className="muted">用户材料与源系统证据分别保存。单件上限 5 MiB，用户附件总量上限 100 MiB；未提取的文件不会声称已被分析读取。</p>{attachments.length ? <ul className="saved-attachments">{attachments.map((a) => <li key={a.id}><FileAttachment value={a} /><div className="actions">{!isReportAttachment(a) ? <Button onClick={() => { setStaged((items) => [...new Set([...items, a.id])]); setAttachmentsOpen(false); }}>添加到消息</Button> : null}<a className="btn" href={`/api/attachments/${encodeURIComponent(a.id)}/download`}><Download size={14} />下载</a></div></li>)}</ul> : <p>尚无已保存附件。</p>}</Modal> : null}
+    {attachmentsOpen ? <Modal title="会话附件" onClose={() => setAttachmentsOpen(false)} wide><p className="muted">用户材料与源系统证据分别保存。单件上限 5 MiB，用户附件总量上限 100 MiB；未提取的文件不会声称已被分析读取。</p>{attachments.length ? <ul className="saved-attachments">{attachments.map((a) => <li key={a.id}><FileAttachment value={a} /><div className="actions">{!archived && !isReportAttachment(a) ? <Button onClick={() => { setStaged((items) => [...new Set([...items, a.id])]); setAttachmentsOpen(false); }}>添加到消息</Button> : null}<a className="btn" href={`/api/attachments/${encodeURIComponent(a.id)}/download`}><Download size={14} />下载</a></div></li>)}</ul> : <p>尚无已保存附件。</p>}</Modal> : null}
     {evidence ? <EvidenceModal id={evidence} onClose={() => setEvidence(null)} /> : null}
   </div>;
 }

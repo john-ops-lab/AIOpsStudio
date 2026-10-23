@@ -402,7 +402,7 @@ class ConfigService:
             if payload.get("expected_revision") != previous["revision"]:
                 raise StoreConflict("设置已变化，请重新读取后保存")
             item = copy.deepcopy(previous)
-            for field in {"default_model_id", "budget", "queue_limit", "retention_days", "evidence_limit_bytes", "storage_quota_bytes", "ongrid", "environments", "identity_mapping", "query_catalog"}:
+            for field in {"default_model_id", "budget", "queue_limit", "retention_days", "evidence_limit_bytes", "storage_quota_bytes", "ongrid", "environment", "environments", "identity_mapping", "query_catalog"}:
                 if field in payload:
                     item[field] = copy.deepcopy(payload[field])
             if item.get("default_model_id"):
@@ -419,6 +419,13 @@ class ConfigService:
             ongrid = item.get("ongrid", {})
             if not isinstance(ongrid, dict):
                 raise ConfigError("Ongrid 配置必须为对象")
+            from .analysis_context import ContextError, validate_configuration
+            try:
+                validate_configuration(item.get("identity_mapping"), item.get("query_catalog"))
+            except ContextError as error:
+                raise ConfigError(error.detail, error.code) from None
+            if "environment" in item and (not isinstance(item["environment"], str) or not item["environment"].strip() or len(item["environment"]) > 128):
+                raise ConfigError("默认环境必须为 1 至 128 个字符", "environment_invalid")
             if ongrid.get("url") or ongrid.get("base_url"):
                 validate_url(ongrid.get("url") or ongrid["base_url"], "Ongrid 地址")
             for input_field, reference_field in (("secret_value", "secret_id"), ("password_secret_value", "password_secret_id")):

@@ -1,0 +1,90 @@
+# source-access-scope Specification
+
+## Purpose
+
+约束服务端主体的数据源访问、版本化模型出站、历史继承及配置最小可见，确保每次派发和材料读取都服从最新授权。Case 共享链路仍属后续 R13；此规格不声称已实现共享 API。
+
+## Requirements
+
+### Requirement: 服务端源范围授权
+系统 SHALL 根据认证主体、源、工具、目标、环境、目的、凭据和连接目的地授权每次源访问。管理员配置权限 MUST NOT 自动扩大私人材料或源范围；不能可靠限制的查询 MUST 拒绝。
+
+#### Scenario: 双用户与参数越权
+- **WHEN** 两个源范围不同的用户提交相同请求，或前端/模型修改工具参数
+- **THEN** 仅匹配显式范围和参数约束的请求允许，其余返回不含内部数据的固定拒绝
+
+### Requirement: 最新撤权优先于冻结快照
+系统 SHALL 固定 attempt 策略并在派发、返回接受和材料读取时同时核对最新规则；最新 deny、禁用和撤权 MUST 优先，不得静默回退或扩大快照授权。
+
+#### Scenario: 排队后及运行中撤权
+- **WHEN** 排队后授权撤销或请求在途时新增禁止
+- **THEN** 后续源访问及返回披露停止，历史证据和派生材料不能绕过最新范围
+
+#### Scenario: 源响应在途撤权
+- **WHEN** 源请求已派发，但响应返回前主体、凭据或源权限被撤销
+- **THEN** 服务端在保存正文前再次核对范围，拒绝响应且不保存源正文或伪造失败证据；只保留固定错误调用状态
+
+#### Scenario: 已准备的模型消息遇到策略变化
+- **WHEN** 消息已通过类型投影但实际 SDK HTTP 请求前策略收紧或不可用
+- **THEN** 消息批准摘要必须与当前策略匹配，否则重做投影或拒绝；旧文本批准不能跳过最新禁止
+
+### Requirement: 连接与凭据绑定
+系统 SHALL 仅向显式绑定目的地携带固定凭据并启用 TLS 校验；未经批准的重定向、目标或 Host 变化 MUST 拒绝。
+
+#### Scenario: 未登记目的地
+- **WHEN** 请求使用非绑定 URL、HTTP 非 loopback、关闭 TLS 或要求重定向
+- **THEN** 请求在网络派发前失败，凭据不离开登记目的地
+
+#### Scenario: 同源重定向与多请求协议
+- **WHEN** MCP SDK、Ongrid 登录重试或分页要发送下一个 HTTP 请求，或源返回同源不同路径重定向
+- **THEN** 每次实际传输先校验主体与固定连接；非登记路径不得继续，即使 origin 相同也不转发认证材料
+
+### Requirement: 版本化模型出站
+系统 SHALL 根据版本化模型、主体、材料类型和字段白名单生成模型可见视图。凭据 MUST 禁止；未知类型、策略缺失或读取失败 MUST 失败关闭。
+
+#### Scenario: 误列凭据与未知材料
+- **WHEN** 字段规则误允许凭据，或日志/附件类型未登记
+- **THEN** 模型请求在派发前拒绝，不能按全量正文出站
+
+#### Scenario: 模型协议与附加参数
+- **WHEN** SDK 序列化 system/user、历史、工具定义/结果、协议消息或 extra_body
+- **THEN** 最终消息和非消息参数均接受登记字段检查，凭据仅在绑定 auth header 出现，已撤销凭据仍不能出现在正文、异常或导出
+
+### Requirement: 授权会话内一致别名
+系统 SHALL 用不可反推原值的随机别名保持必要身份关联并按 owner/conversation 隔离，映射 MUST 只保存在服务端，源参数不得被任意字符串替换。
+
+#### Scenario: 多轮与隔离
+- **WHEN** 同一会话跨轮引用同一对象或不同用户/会话引用相同原值
+- **THEN** 前者保持一致别名，后者使用不同映射；禁止字段和映射表不出现在实际 HTTP 请求、日志或正常导出
+
+### Requirement: 实际出站与共享读者验收
+系统 SHALL 以实际模型 HTTP 请求字节验收所有消息、工具、摘要、重试和异常路径，未来共享材料 SHALL 对每位读者重新核对 owner/材料许可与源范围；纯函数通过不得宣称实际共享链路完成。
+
+#### Scenario: 最新策略收紧
+- **WHEN** 旧上下文的出站许可撤销或材料被撤回
+- **THEN** 旧快照和重试不再发送被禁内容，返回明确失败/受限状态，不静默切模型
+
+### Requirement: 策略管理与片段读取 API
+系统 SHALL 仅允许管理员通过 `/api/access-policies/source` 和 `/egress` 管理策略，写入 MUST 使用 expected_revision 和未改写的唯一版本。系统 SHALL 为当前用户提供有预算的 `/api/runs/{id}/material-reads` 与 `/api/fragments/{anchor_id}`，片段跳转 MUST 重新检查当前归属、源授权、保存完整性和原选择器，不返回服务器路径。
+
+#### Scenario: 旧版本与撤权片段
+- **WHEN** 管理员用相同版本提交不同内容，或用户访问撤权/变化材料的既有片段
+- **THEN** 前者返回修订冲突，后者拒绝读取；旧片段不能替换为新正文，也不能借历史锚点绕过授权
+
+### Requirement: 继承历史与派生制品重新授权
+系统 SHALL 对每个继承历史轮次及其源证据递归核对当前 owner 和源范围。会话标题、助手正文、概览、队列、调用列表和生成报告附件 MUST NOT 绕过撤权；有派生正文而来源未知的旧记录不得自动升级为可信。用户原始上传仍受其 owner 和会话归属约束。显式登记、内容摘要匹配的升级前只读档案按 `legacy-history-archive` 保留原 owner 只读访问；不得作为已授权源材料继承、补读或送入模型。
+
+#### Scenario: 历史来源撤权与未知旧正文
+- **WHEN** 旧轮次源权限撤销、历史引用缺失/循环，或未登记为只读档案的无来源旧报告被请求
+- **THEN** 当前派生物读取和列表受限，生成附件/下载拒绝，当前用户自己的原始上传不会被当作新的源证据授权
+
+### Requirement: 普通用户配置与概览最小可见
+系统 SHALL 为普通用户仅提供已发布且启用的 Skill/模型选择元数据，settings 仅返回其可见默认模型 ID。普通用户的 MCP 目录元数据 SHALL 另需该主体最新 `$catalog`/discovery 源授权；未授权源 MUST 隐藏。配置正文、references、连接目的地、CA 路径、凭据引用、完整版本及其他源身份映射不得通过选择列表、直接 URL 或概览旁路返回。
+
+#### Scenario: 未授权源与仍可用的选择入口
+- **WHEN** 普通用户打开选择器和 overview，且某源未授予或已撤权
+- **THEN** 可选择允许的 Skill/模型以及显式授权的源最少元数据；其他源名称、执行记录与全局数量不泄露，直接版本读取拒绝
+
+#### Scenario: Revocation while protected content is already visible
+- **WHEN** a current-page refresh receives an authoritative 401, 403, 404 or policy-unavailable response for previously visible protected content
+- **THEN** the client SHALL clear the denied response and any locally displayed evidence fragment rather than continuing to render cached material; an open evidence view SHALL periodically recheck its authorization without repeatedly consuming fragment-read budget

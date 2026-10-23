@@ -1,0 +1,54 @@
+{
+  "schema": "aiopsstudio-public-live-model-check/1",
+  "measurement_date": "2026-10-23",
+  "provider": "MiniMax",
+  "source_kind": "frozen_synthetic_source",
+  "business_acceptance": "unverified",
+  "used_for_baseline_comparison": false,
+  "actual_model_config": "explicit external private configuration; provider/model not silently replaced",
+  "attempts": [
+    {
+      "trial": 1,
+      "status": "failed",
+      "actual_model_http_requests": 1,
+      "guard_checked_requests": 1,
+      "synthetic_source_tool_requests": 0,
+      "input_tokens": null,
+      "output_tokens": null,
+      "boundary": "initial explicit OpenAI-compatible API path returned 404; original configuration and first failure retained privately"
+    },
+    {
+      "trial": 2,
+      "status": "partial",
+      "actual_model_http_requests": 1,
+      "guard_checked_requests": 1,
+      "synthetic_source_tool_requests": 2,
+      "input_tokens": 1710,
+      "output_tokens": 275,
+      "boundary": "actual model successfully called tools and requested a fixed Skill reference; declared text-reference schema was incomplete and guard rejected the delivery"
+    },
+    {
+      "trial": 3,
+      "status": "partial",
+      "actual_model_http_requests": 2,
+      "guard_checked_requests": 2,
+      "synthetic_source_tool_requests": 2,
+      "input_tokens": 3990,
+      "output_tokens": 428,
+      "boundary": "fixed source lacked a requested tool/page snapshot and model attempted invalid saved-material selection; source gap and reader failure retained, no answers or snapshots fabricated"
+    }
+  ],
+  "estimated_cost": null,
+  "cost_unknown_reason": "no frozen price schedule; trial one has no provider usage receipt",
+  "privacy": [
+    "actual request bodies captured only after application HTTP guard",
+    "auth headers and external configuration not copied into observations",
+    "raw payloads, model configuration, identifiers and receipts remain outside repository"
+  ],
+  "limitations": [
+    "These are bounded real MiniMax integration trials with synthetic sources, not real business/source acceptance.",
+    "No automatic fallback to another provider or model occurred.",
+    "The three business trials remain failed/partial; later synthetic fixes are not relabeled as successful MiniMax business reruns.",
+    "A separate successful model protocol echo check is tracked by integration verification and is not substituted for these trials."
+  ]
+}

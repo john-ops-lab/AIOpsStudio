@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Download, FileText, ListTree, PanelRightClose } from "lucide-react";
 import type { Entity, Run } from "../../types";
 import { dateTime } from "../../api";
-import { Report } from "../../pages/Runs";
+import { AnalysisContextPanel, Coverage, Report } from "../../pages/Runs";
 import { Button, Empty, JsonView, Loading, Modal, Notice, Status } from "../ui";
 import { isReportAttachment, textValue } from "./context";
 export type CanvasTab = "report" | "evidence" | "events";
@@ -27,13 +27,15 @@ export default function AnalysisCanvas({ run, runs, attachments, selected, onSel
       <Notice error={error} />
       {loading ? <Loading /> : !run ? <Empty title="尚无分析轮次" detail="发送问题并补齐上下文后，报告与证据会保存在这里。" /> : <>
         <div className="canvas-run-meta"><h2>{run.title || "分析记录"}</h2><p>{run.analysis_start ? `${dateTime(run.analysis_start)} — ${dateTime(run.analysis_end)}` : "此轮未设置时间窗"}</p></div>
+        {["investigation", "skill_test"].includes(run.purpose) ? <AnalysisContextPanel value={run.analysis_context} /> : null}
         {run.error ? <Notice error={textValue(run.error)} /> : null}
         {run.artifact_error || run.report_attachment_error ? <Notice error={`本轮执行已结束，但回复或报告制品保存失败：${textValue(run.artifact_error || run.report_attachment_error)}`} /> : null}
         {tab === "report" ? <><Report report={run.report} title="分析报告" onEvidence={onEvidence} />{reportFile ? <a className="btn report-download" href={`/api/attachments/${encodeURIComponent(reportFile.id)}/download`}><Download size={15} aria-hidden="true" />下载本轮 Markdown 报告</a> : null}</> : null}
         {tab === "evidence" ? run.evidence?.length ? <ol className="canvas-evidence-list">{run.evidence.map((e, i) => <li key={e.id}>
-          <div className="evidence-card-heading"><FileText size={17} aria-hidden="true" /><strong>证据 {i + 1} · {e.tool_name || e.source || "源响应"}</strong><Status value={e.status} /></div>
+          <div className="evidence-card-heading"><FileText size={17} aria-hidden="true" /><strong>证据 {i + 1} · {e.tool_name || e.source || "源响应"}</strong><Status value={e.status}>{e.status === "succeeded" ? "调用已完成" : undefined}</Status></div>
           <dl><div><dt>来源</dt><dd>{e.source || e.tool_name || "未提供"}</dd></div><div><dt>保存时间</dt><dd>{dateTime(e.created_at)}</dd></div><div><dt>证据 ID</dt><dd><code>{e.id}</code></dd></div></dl>
           {e.truncated ? <p className="scope-note">响应存在截断，完整性以证据元数据为准。</p> : null}
+          <Coverage value={e.coverage} />
           <div className="actions"><Button onClick={() => onEvidence(e.id)}>查看查询<ChevronRight size={14} aria-hidden="true" /></Button><Button onClick={() => onEvidence(e.id)}>原始响应</Button></div>
         </li>)}</ol> : <Empty title="尚无已保存证据" detail="这里仅展示本轮实际留存的源系统响应。" /> : null}
         {tab === "events" ? run.events?.length ? <ol className="canvas-events">{run.events.map((event, i) => <li key={event.id || event.seq || i}><ListTree size={15} aria-hidden="true" /><div><strong>{event.type}</strong><time>{dateTime(event.created_at || event.timestamp)}</time><JsonView title="事件详情" value={event.payload ?? event} /></div></li>)}</ol> : <Empty title="尚无持久执行事件" /> : null}

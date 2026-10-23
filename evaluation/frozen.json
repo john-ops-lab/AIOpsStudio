@@ -1,0 +1,167 @@
+{
+  "schema": "aiopsstudio-evaluation-frozen/1",
+  "versions": {
+    "model": {
+      "version": "evaluation-model/1",
+      "sha256": "32ea3ff1829a3f7c181d1c3d0eb1d76af49bace495973f5101b5817ca21040d1"
+    },
+    "skill": {
+      "version": "evaluation-skill/1",
+      "sha256": "bcca2e5a53d081bec291c19d65718488af163009121570993e987777259f41f7"
+    },
+    "tool_schema": {
+      "version": "evaluation-tool_schema/1",
+      "sha256": "330868503da827c38aa55a2d3743f7a6d8796e2ff472abbe0bdffdf8091ad16e"
+    },
+    "summarizer": {
+      "version": "evaluation-summarizer/1",
+      "sha256": "51e74e7a70a2044358289d73660cc1fa83c83820c4ef9278304e9ac2ebeae64c"
+    },
+    "query_catalog": {
+      "version": "evaluation-query_catalog/1",
+      "sha256": "3b43a8c3ba472b5c9e97892d7d20d3d166233158c7fe4ec2eb3faed5bc5631a0"
+    },
+    "privacy_policy": {
+      "version": "evaluation-privacy_policy/1",
+      "sha256": "a39e16e5183c7ac86b5cb61028c571d2184cc2720de9cd7846756d59800a99c5"
+    }
+  },
+  "components": {
+    "model": {
+      "id": "model_evaluation",
+      "name": "Synthetic conservative extractor",
+      "enabled": true,
+      "provider": "openai",
+      "model": "synthetic-conservative-extractor-v1",
+      "max_tokens": 4096,
+      "temperature": 0
+    },
+    "skill": {
+      "id": "skill_evaluation",
+      "name": "evaluation-analysis",
+      "display_name": "合成分析验收",
+      "description": "仅在隔离数据库回放合成输入。",
+      "enabled": true,
+      "content": "---\nname: evaluation-analysis\ndescription: 合成只读事实分析\n---\n固定目标与绝对窗口；先取证，分页完整后才能声明范围。事实、范围缺口与候选原因分别表达，根因没有独立证据时保持未知。只按需读取 references，不将无关私密字段发送模型。",
+      "references": {
+        "references/targeted.md": "仅用于 references 边界测试。REFERENCE_SENTINEL_SYNTHETIC，非运维事实，未按需读取前不应进入模型。"
+      },
+      "dependencies": [
+        {
+          "server_id": "server_evaluation",
+          "tool_name": "read_snapshot",
+          "required": true
+        },
+        {
+          "server_id": "server_evaluation",
+          "tool_name": "query_prometheus",
+          "required": true
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "tool_schema": {
+      "id": "server_evaluation",
+      "name": "Synthetic snapshot source",
+      "enabled": true,
+      "url": "http://127.0.0.1:1/mcp",
+      "allowed_tools": [
+        "read_snapshot",
+        "query_prometheus"
+      ],
+      "tools": [
+        {
+          "name": "read_snapshot",
+          "alias": "read_snapshot",
+          "description": "读取固定合成快照，绝对窗口；分页须显式 page。",
+          "readonly": true,
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              },
+              "startTime": {
+                "type": "string"
+              },
+              "endTime": {
+                "type": "string"
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "target",
+              "startTime",
+              "endTime"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "name": "query_prometheus",
+          "alias": "query_prometheus",
+          "description": "读取固定合成快照，绝对窗口；分页须显式 page。",
+          "readonly": true,
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "type": "string"
+              },
+              "startTime": {
+                "type": "string"
+              },
+              "endTime": {
+                "type": "string"
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "target",
+              "startTime",
+              "endTime"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "summarizer": {
+      "name": "application-bounded-ledger",
+      "version": "baseline-ledger/1",
+      "description": "被测应用实际生成阅读视图；源码版本单独固定，不能替换成oracle摘要。"
+    },
+    "query_catalog": {
+      "scope": "synthetic-only",
+      "metrics": [
+        {
+          "name": "synthetic_error_rate",
+          "expr": "synthetic_error_rate{service=\"demo-checkout\"}",
+          "type": "range",
+          "interpretation": "已返回离散样本，不能推断连续全量。"
+        }
+      ]
+    },
+    "privacy_policy": {
+      "id": "synthetic-evaluation-privacy",
+      "version": "evaluation-privacy/1",
+      "field_rules": [
+        {
+          "field": "operator_email",
+          "action": "deny_model_egress"
+        }
+      ],
+      "source_scope": "synthetic-service-only",
+      "mapping_visibility": "server_only"
+    }
+  }
+}

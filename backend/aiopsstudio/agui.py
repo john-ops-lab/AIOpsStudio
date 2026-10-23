@@ -50,15 +50,21 @@ def configure_agui(app):
     async def stream(request, business_id, protocol_run_id, owner_id):
         if not stream_authorized(request, owner_id):
             return
-        require_owned(store.get("run", business_id), owner_id)
-        current = runtime.detail(business_id, owner_id=owner_id)
+        try:
+            current = runtime.detail(business_id, owner_id=owner_id)
+        except HTTPException:
+            yield event("RUN_ERROR", message="分析不存在或当前不可访问", code="access_revoked")
+            return
         yield event("RUN_STARTED", threadId=current["thread_id"], runId=protocol_run_id)
         seen_messages, seen_seq = set(), -1
         while True:
             if not stream_authorized(request, owner_id):
                 return
-            require_owned(store.get("run", business_id), owner_id)
-            current = runtime.detail(business_id, owner_id=owner_id)
+            try:
+                current = runtime.detail(business_id, owner_id=owner_id)
+            except HTTPException:
+                yield event("RUN_ERROR", message="分析不存在或当前不可访问", code="access_revoked")
+                return
             events = current.get("events", [])
             seq = max((e.get("seq", 0) for e in events), default=0)
             if seq != seen_seq:
@@ -166,6 +172,8 @@ def configure_agui(app):
                         "protocol_message_id": message_id}, owner_id=owner_id)
             elif not record:
                 raise HTTPException(404, "分析会话不存在，请先提交分析")
+        # Authenticate source history before starting the 200/SSE response.
+        runtime.require_owned(record["id"], owner_id)
         if not binding:
             store.save("agui_binding", protocol_binding_id(owner_id, protocol_id), {"owner_id": owner_id, "protocol_run_id": protocol_id,
                        "thread_id": thread_id, "business_run_id": record["id"], "requested_business_run_id": requested_explicit})
@@ -183,6 +191,8 @@ def configure_agui(app):
     @app.get("/api/ag-ui/status/{thread_id}")
     async def status(thread_id: str, request: Request):
         record = find(thread_id, actor_id(request))
+        if record:
+            runtime.require_owned(record["id"], actor_id(request))
         return {"running": bool(record and record["status"] not in terminal), "business_run_id": record["id"] if record else None}
 
     @app.post("/api/ag-ui/stop/{thread_id}")

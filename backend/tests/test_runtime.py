@@ -13,6 +13,7 @@ from aiopsstudio import connectors
 from aiopsstudio.config import ConfigService, Vault
 from aiopsstudio.runtime import Runtime, ExecutionStop, now
 from aiopsstudio.store import Store
+from m1_fixtures import analysis_defaults, seed_context_settings, seed_policies
 
 
 @pytest.fixture
@@ -25,11 +26,11 @@ def runtime(tmp_path):
     app.state.config = ConfigService(store, vault, tmp_path)
     store.save("settings", "main", {"default_model_id": "model_fixture", "min_free_bytes": 1})
     model = {"id": "model_fixture", "name": "synthetic", "model": "synthetic-openai-model", "enabled": True,
-             "provider": "openai", "secret_id": vault.put("synthetic-secret-do-not-leak"), "max_tokens": 4096}
+             "provider": "openai", "base_url": "http://127.0.0.1:1/v1", "secret_id": vault.put("synthetic-secret-do-not-leak"), "max_tokens": 4096}
     model.update(current_version="v1", versions=[{"id": "v1", "snapshot": copy.deepcopy(model)}])
     store.save("model", model["id"], model)
     skill = {"id": "skill_fixture", "name": "cmdb-query", "content": "---\nname: cmdb-query\ndescription: 合成协议样本\n---\n固定测试方法正文，必须进入模型。", "enabled": True,
-             "references": {}, "dependencies": [], "input_schema": {"type": "object"}}
+             "references": {}, "dependencies": [{"server_id": "server_fixture", "tool_name": "read_fixture"}], "input_schema": {"type": "object"}}
     skill.update(current_version="v1", versions=[{"id": "v1", "snapshot": copy.deepcopy(skill)}])
     store.save("skill", skill["id"], skill)
     tool = {"name": "read_fixture", "description": "synthetic read-only fixture", "inputSchema": {"type": "object", "properties": {}}, "readonly": True}
@@ -37,6 +38,8 @@ def runtime(tmp_path):
               "allowed_tools": [tool["name"]], "tools": [tool]}
     server.update(current_version="v1", versions=[{"id": "v1", "snapshot": copy.deepcopy(server)}])
     store.save("mcp", server["id"], server)
+    seed_context_settings(store, tool)
+    seed_policies(store, model=model, server=server)
     yield rt
     store.close()
 
@@ -76,7 +79,9 @@ async def test_idempotency_snapshots_messages_and_queue_limit(runtime):
 @pytest.mark.asyncio
 async def test_shared_slot_serial_execution_and_native_error_evidence(runtime, monkeypatch):
     active = maximum = calls = 0
-    async def synthetic_mcp(*args):
+    async def synthetic_mcp(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         nonlocal active, maximum, calls
         active += 1
         maximum = max(maximum, active)
@@ -105,7 +110,9 @@ async def test_shared_slot_serial_execution_and_native_error_evidence(runtime, m
 @pytest.mark.asyncio
 async def test_shutdown_interrupts_inflight_without_replaying(runtime, monkeypatch):
     entered = asyncio.Event()
-    async def synthetic_inflight(*args):
+    async def synthetic_inflight(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         entered.set()
         await asyncio.Event().wait()
     monkeypatch.setattr(connectors, "mcp_call", synthetic_inflight)
@@ -137,7 +144,9 @@ async def test_immediate_block_queued_cancel_and_retry(runtime, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_truncation_and_secret_redaction_before_storage(runtime, monkeypatch):
-    async def synthetic_mcp(*args):
+    async def synthetic_mcp(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"content": [{"type": "text", "text": "synthetic-secret-do-not-leak" + "x" * 1500}], "isError": False}
     monkeypatch.setattr(connectors, "mcp_call", synthetic_mcp)
     run = await runtime.submit(tool_payload())
@@ -193,16 +202,18 @@ async def test_real_deepagents_fixed_body_and_no_builtin_execution_tools(runtime
         def _generate(self, messages, stop=None, run_manager=None, **kwargs):
             observed["messages"] = messages
             return ChatResult(generations=[ChatGeneration(message=AIMessage(content="合成协议测试没有读取业务证据，结论待验证。"))])
-    async def synthetic_discovery(*args):
+    async def synthetic_discovery(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"items": server["versions"][0]["snapshot"]["tools"], "complete": True}
     monkeypatch.setattr(connectors, "mcp_discover", synthetic_discovery)
     monkeypatch.setattr(runtime, "_model", lambda *a, **k: SyntheticModel())
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "deepagents-fixture"})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "deepagents-fixture"})
     await runtime.execute(run)
     done = runtime.store.get("run", run["id"])
     assert done["status"] == "partial", done.get("error")
     assert "固定测试方法正文" in " ".join(str(m.content) for m in observed["messages"])
-    assert observed.get("tools", []) == ["explicit_frozen_alias"]
+    assert observed.get("tools", []) == ["explicit_frozen_alias", "read_saved_material"]
     assert not set(observed.get("tools", [])) & {"task", "execute", "write_file", "edit_file", "read_file", "ls", "glob", "grep"}
     assert done["usage"]["model_call_count"] == 1
     assert done["usage"]["token_usage_known"] is False
@@ -274,7 +285,9 @@ async def test_quota_gates_all_queue_types_and_each_response(runtime, monkeypatc
         assert error.value.status_code == 507
     (runtime.artifact_dir / "existing.bin").unlink()
     run = await runtime.submit(tool_payload("response-quota"))
-    async def synthetic_large(*args):
+    async def synthetic_large(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"content": [{"type": "text", "text": "x" * 2000}], "isError": False}
     monkeypatch.setattr(connectors, "mcp_call", synthetic_large)
     await runtime.execute(run)
@@ -285,7 +298,9 @@ async def test_quota_gates_all_queue_types_and_each_response(runtime, monkeypatc
 
 @pytest.mark.asyncio
 async def test_retention_groups_protect_pinned_and_referenced_evidence(runtime, monkeypatch):
-    async def synthetic_read(*args):
+    async def synthetic_read(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"content": [{"type": "text", "text": "explicit synthetic fixture"}], "isError": False}
     monkeypatch.setattr(connectors, "mcp_call", synthetic_read)
     old = []
@@ -354,7 +369,7 @@ async def test_official_mcp_sdk_against_explicit_local_fake_server(runtime):
 
 @pytest.mark.asyncio
 async def test_model_reading_view_keeps_native_evidence_and_source_facts(runtime):
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "reading-view-fixture"})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "reading-view-fixture"})
     runtime._update(run["id"], {"deadline_at": "2099-01-01T00:00:00Z"})
     envelope = {"schema_version": "fixture-mcp/1", "request_id": "explicit-fixture", "data": {"models": [{"name": "fixture-model", "count": 3}]},
                 "effective_query": {"scope": "fixture"}, "completeness": {"status": "partial", "reasons": ["fixture-limit"]},
@@ -456,21 +471,27 @@ async def test_real_graph_limits_exploration_and_reserves_tool_free_report(runti
                 message = AIMessage(content="", tool_calls=[{"id": "fixture-" + str(seen["explore"]), "name": "bounded_fixture_read", "args": {}}])
             message.usage_metadata = {"input_tokens": 1000, "output_tokens": 100, "total_tokens": 1100}
             return ChatResult(generations=[ChatGeneration(message=message)])
-    async def discovery(*args):
+    async def discovery(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"items": server["versions"][0]["snapshot"]["tools"], "complete": True}
-    async def native(*args):
+    async def native(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"structuredContent": {"data": {"items": [{"ci_id": 1, "model": "fixture", "attributes": {"name": "synthetic"}}]},
                 "effective_query": {}, "completeness": {"status": "complete", "reasons": []}}, "isError": False}
     monkeypatch.setattr(connectors, "mcp_discover", discovery)
     monkeypatch.setattr(connectors, "mcp_call", native)
     monkeypatch.setattr(runtime, "_model", lambda *a, **k: LoopingSyntheticModel())
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "bounded-model-" + str(report_fails)})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "bounded-model-" + str(report_fails)})
     await runtime.execute(run)
     done = runtime.store.get("run", run["id"])
     assert seen["explore"] == 4 and seen["report"] == 1, done.get("error")
     assert done["usage"]["model_call_count"] == 5 and done["usage"]["tool_call_count"] == 4
     assert done["usage"]["mcp_request_count"] == 5 and done["usage"]["mcp_tool_call_count"] == 4
-    assert done["usage"]["source_request_count"] == 0 and done["usage"]["mcp_upstream_http_request_count"] is None
+    # Each explicit fake dispatch invokes the platform HTTP observer once;
+    # source-internal requests behind MCP remain unknown.
+    assert done["usage"]["source_request_count"] == 5 and done["usage"]["mcp_upstream_http_request_count"] is None
     assert done["status"] == "partial" and done["report"]["analysis"]
     assert done["report"]["model_generated"] is not report_fails
     assert done["report"]["source"] == ("platform_template" if report_fails else "model")
@@ -488,7 +509,7 @@ async def test_real_graph_limits_exploration_and_reserves_tool_free_report(runti
 async def test_budget_forecast_stops_before_consuming_report_reserve(runtime):
     from langchain_core.messages import SystemMessage
     from langchain_core.tools import StructuredTool
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "reserve-forecast"})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "reserve-forecast"})
     runtime._update(run["id"], {"deadline_at": "2099-01-01T00:00:00Z"})
     runtime._update(run["id"], callback=lambda r: r["usage"].update(input_tokens=83000, output_tokens=0))
     request = SimpleNamespace(system_message=SystemMessage(content="explicit fixture"), tools=[])
@@ -503,7 +524,7 @@ async def test_budget_forecast_stops_before_consuming_report_reserve(runtime):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scope_status,verified,expected", [("partial", False, "partial"), ("unknown", False, "partial"), ("complete", True, "succeeded")])
+@pytest.mark.parametrize("scope_status,verified,expected", [("partial", False, "partial"), ("unknown", False, "partial"), ("complete", True, "partial")])
 async def test_natural_report_propagates_explicit_source_scope(runtime, monkeypatch, scope_status, verified, expected):
     """Source partial is independent of saved size and model reading truncation."""
     import re
@@ -532,18 +553,22 @@ async def test_natural_report_propagates_explicit_source_scope(runtime, monkeypa
             else:
                 message = AIMessage(content="", tool_calls=[{"id": "scope-fixture", "name": "scope_fixture_read", "args": {}}])
             return ChatResult(generations=[ChatGeneration(message=message)])
-    async def discovery(*args):
+    async def discovery(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return {"items": server["versions"][0]["snapshot"]["tools"], "complete": True}
     reasons = ["request_budget", "root_coverage_incomplete"] if scope_status != "complete" else []
     native_result = {"structuredContent": {"data": {"items": [{"value": "explicit tiny fixture"}]}, "effective_query": {},
                     "completeness": {"status": scope_status, "reasons": reasons},
                     "verification": {"status": "passed" if verified else "partial", "complete_for_query": verified, "unknowns": {"attribute_values": 1}}}, "isError": False}
-    async def native(*args):
+    async def native(*args, request_observer=None):
+        if request_observer:
+            request_observer()
         return native_result
     monkeypatch.setattr(connectors, "mcp_discover", discovery)
     monkeypatch.setattr(connectors, "mcp_call", native)
     monkeypatch.setattr(runtime, "_model", lambda *a, **k: ScopeSyntheticModel())
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "source-scope-" + scope_status})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "source-scope-" + scope_status})
     await runtime.execute(run)
     done = runtime.store.get("run", run["id"])
     assert done["status"] == expected, done.get("error")
@@ -551,7 +576,10 @@ async def test_natural_report_propagates_explicit_source_scope(runtime, monkeypa
     assert done["evidence"][0]["status"] == "saved" and not done["evidence"][0]["truncated"]
     assert not done["evidence"][0]["model_view"]["business_data_truncated"]
     assert not done["context_reading"]["business_data_truncated"]
-    assert done["report"]["completion_scope"] == ("declared_scope" if verified else "bounded_evidence")
+    # Source completeness cannot certify this intentionally unstructured model prose.
+    assert done["report"]["completion_scope"] == "bounded_evidence"
+    assert done["report"]["grounding"]["validation"]["status"] == "partial"
+    assert done["report"]["grounding"]["analysis_status"] == "unverified_model_interpretation"
     assert bool(done["report"]["source_limits"]) is not verified
     if not verified:
         assert done["report"]["source_limits"][0]["reasons"] == reasons
@@ -567,7 +595,7 @@ async def test_natural_report_propagates_explicit_source_scope(runtime, monkeypa
 
 @pytest.mark.asyncio
 async def test_report_ledger_prioritizes_arguments_alert_times_and_all_series(runtime):
-    run = await runtime.submit({"skill_id": "skill_fixture", "client_request_id": "priority-facts", "analysis_start": "2026-10-22T01:00:00Z", "analysis_end": "2026-10-22T02:00:00Z"})
+    run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "priority-facts", "analysis_start": "2026-10-22T01:00:00Z", "analysis_end": "2026-10-22T02:00:00Z"})
     detail = {"id": 7, "target_type": "device", "target_id": "3", "labels": {"mountpoint": "/"},
               "fired_at": "2026-10-22T01:00:00Z", "last_fired_at": "2026-10-22T01:10:00Z", "resolved_at": "2026-10-22T01:50:00Z",
               "summary": "body intentionally large " * 2000}

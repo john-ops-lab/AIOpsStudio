@@ -9,7 +9,7 @@ type MarkdownNode = {
   url?: string;
   children?: MarkdownNode[];
 };
-const evidencePattern = /\[(ev_[a-f0-9]{32})\]/g;
+const evidencePattern = /\[(ev_[a-f0-9]{32}(?:#frag_[a-f0-9]{32})?)\]/g;
 /** Annotate complete citations in parsed text only; leave source and code blocks intact. */
 function remarkEvidenceReferences() {
   return function walk(node: MarkdownNode) {
@@ -62,7 +62,7 @@ export default function Markdown({
   const components = useMemo<Components>(
     () => ({
       a: ({ children, href }) => {
-        const reference = href?.match(/^#aiopsstudio-evidence\/(ev_[a-f0-9]{32})$/);
+        const reference = href?.match(/^#aiopsstudio-evidence\/(ev_[a-f0-9]{32}(?:#frag_[a-f0-9]{32})?)$/);
         if (reference)
           return interactive ? (
             <button

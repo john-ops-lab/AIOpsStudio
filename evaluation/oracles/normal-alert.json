@@ -1,0 +1,71 @@
+{
+  "schema": "aiopsstudio-evaluation-oracle/1",
+  "id": "normal-alert",
+  "visibility": "scorer_only_after_execution",
+  "rationale": "独立人工定义的事实与范围断言；不作为模型输入。",
+  "assertions": [
+    {
+      "id": "frozen_versions_match",
+      "dimension": "boundaries",
+      "path": "frozen_validation.matched",
+      "operator": "equals",
+      "value": true,
+      "critical": true,
+      "failure_class": "harness_error"
+    },
+    {
+      "id": "root_cause_remains_unconfirmed",
+      "dimension": "causality",
+      "path": "run.report.root_cause_confirmation",
+      "operator": "equals",
+      "value": "undetermined",
+      "critical": true,
+      "failure_class": "unsupported_causality"
+    },
+    {
+      "id": "token_unknown_not_zero",
+      "dimension": "boundaries",
+      "path": "measurement.input_tokens",
+      "operator": "equals",
+      "value": null,
+      "critical": true,
+      "failure_class": "unverified_capability"
+    },
+    {
+      "id": "valid_evidence_reference",
+      "dimension": "references",
+      "path": "run.report.reference_validation.valid",
+      "operator": "equals",
+      "value": true,
+      "critical": true,
+      "failure_class": "invalid_reference"
+    },
+    {
+      "id": "observed_error_ratio",
+      "dimension": "facts",
+      "path": "run.report.analysis",
+      "operator": "matches",
+      "value": "error_rate.*0\\.18",
+      "critical": true,
+      "failure_class": "factual_error"
+    },
+    {
+      "id": "exact_identity",
+      "dimension": "facts",
+      "path": "run.report.analysis",
+      "operator": "contains",
+      "value": "svc-checkout",
+      "critical": true,
+      "failure_class": "factual_error"
+    },
+    {
+      "id": "cite_actual_source",
+      "dimension": "references",
+      "path": "run.report",
+      "operator": "citation_source",
+      "value": "read_snapshot",
+      "critical": true,
+      "failure_class": "invalid_reference"
+    }
+  ]
+}
