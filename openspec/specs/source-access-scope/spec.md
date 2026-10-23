@@ -20,6 +20,10 @@
 - **WHEN** 排队后授权撤销或请求在途时新增禁止
 - **THEN** 后续源访问及返回披露停止，历史证据和派生材料不能绕过最新范围
 
+#### Scenario: 源响应在途撤权
+- **WHEN** 源请求已派发，但响应返回前主体、凭据或源权限被撤销
+- **THEN** 服务端在保存正文前再次核对范围，拒绝响应且不保存源正文或伪造失败证据；只保留固定错误调用状态
+
 #### Scenario: 已准备的模型消息遇到策略变化
 - **WHEN** 消息已通过类型投影但实际 SDK HTTP 请求前策略收紧或不可用
 - **THEN** 消息批准摘要必须与当前策略匹配，否则重做投影或拒绝；旧文本批准不能跳过最新禁止
@@ -68,10 +72,10 @@
 - **THEN** 前者返回修订冲突，后者拒绝读取；旧片段不能替换为新正文，也不能借历史锚点绕过授权
 
 ### Requirement: 继承历史与派生制品重新授权
-系统 SHALL 对每个继承历史轮次及其源证据递归核对当前 owner 和源范围。会话标题、助手正文、概览、队列、调用列表和生成报告附件 MUST NOT 绕过撤权；有派生正文而来源未知的旧记录不得自动升级为可信。用户原始上传仍受其 owner 和会话归属约束。
+系统 SHALL 对每个继承历史轮次及其源证据递归核对当前 owner 和源范围。会话标题、助手正文、概览、队列、调用列表和生成报告附件 MUST NOT 绕过撤权；有派生正文而来源未知的旧记录不得自动升级为可信。用户原始上传仍受其 owner 和会话归属约束。显式登记、内容摘要匹配的升级前只读档案按 `legacy-history-archive` 保留原 owner 只读访问；不得作为已授权源材料继承、补读或送入模型。
 
 #### Scenario: 历史来源撤权与未知旧正文
-- **WHEN** 旧轮次源权限撤销、历史引用缺失/循环，或无来源的旧报告被请求
+- **WHEN** 旧轮次源权限撤销、历史引用缺失/循环，或未登记为只读档案的无来源旧报告被请求
 - **THEN** 当前派生物读取和列表受限，生成附件/下载拒绝，当前用户自己的原始上传不会被当作新的源证据授权
 
 ### Requirement: 普通用户配置与概览最小可见
@@ -80,3 +84,7 @@
 #### Scenario: 未授权源与仍可用的选择入口
 - **WHEN** 普通用户打开选择器和 overview，且某源未授予或已撤权
 - **THEN** 可选择允许的 Skill/模型以及显式授权的源最少元数据；其他源名称、执行记录与全局数量不泄露，直接版本读取拒绝
+
+#### Scenario: Revocation while protected content is already visible
+- **WHEN** a current-page refresh receives an authoritative 401, 403, 404 or policy-unavailable response for previously visible protected content
+- **THEN** the client SHALL clear the denied response and any locally displayed evidence fragment rather than continuing to render cached material; an open evidence view SHALL periodically recheck its authorization without repeatedly consuming fragment-read budget

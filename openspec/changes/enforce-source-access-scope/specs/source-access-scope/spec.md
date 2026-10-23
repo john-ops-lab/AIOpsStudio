@@ -14,6 +14,10 @@
 - **WHEN** 排队后授权撤销或请求在途时新增禁止
 - **THEN** 后续源访问及返回披露停止，历史证据和派生材料不能绕过最新范围
 
+#### Scenario: 源响应在途撤权
+- **WHEN** 源请求已派发，但响应返回前主体、凭据或源权限被撤销
+- **THEN** 服务端在保存正文前再次核对范围，拒绝响应且不保存源正文或伪造失败证据；只保留固定错误调用状态
+
 #### Scenario: 已准备的模型消息遇到策略变化
 - **WHEN** 消息已通过类型投影但实际 SDK HTTP 请求前策略收紧或不可用
 - **THEN** 消息批准摘要必须与当前策略匹配，否则重做投影或拒绝；旧文本批准不能跳过最新禁止
@@ -74,3 +78,7 @@
 #### Scenario: 未授权源与仍可用的选择入口
 - **WHEN** 普通用户打开选择器和 overview，且某源未授予或已撤权
 - **THEN** 可选择允许的 Skill/模型以及显式授权的源最少元数据；其他源名称、执行记录与全局数量不泄露，直接版本读取拒绝
+
+#### Scenario: Revocation while protected content is already visible
+- **WHEN** a current-page refresh receives an authoritative 401, 403, 404 or policy-unavailable response for previously visible protected content
+- **THEN** the client SHALL clear the denied response and any locally displayed evidence fragment rather than continuing to render cached material; an open evidence view SHALL periodically recheck its authorization without repeatedly consuming fragment-read budget

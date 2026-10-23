@@ -102,3 +102,5 @@ service.validate_document("access_policy", draft)  # API 另外做 admin、CSRF�
 ## 普通用户选择入口
 
 普通用户 `/api/settings` 只返回其可见默认模型 ID；Skill/模型目录只返回已发布启用的选择元数据，不能返回正文、references、完整版本、base URL 或凭据引用。MCP 列表/详情只有在当前主体具备最新 `$catalog` + discovery 全源授权时才返回 `{id,name,current_version,enabled,blocked}`；其他源列表隐藏、直接详情 404，版本读取 403。管理员仍可管理配置，但真实 probe/discover 始终另需源授权。overview 使用相同源可见规则和最新历史授权，不展示私有源服务、被撤权的 run 或全局数量。
+
+升级前历史例外见 `preserve-legacy-history-on-upgrade`：仅显式清单登记且内容摘要匹配的原owner只读档案可读；不补造source scope、不准继承/补读/模型出站，未登记或变化旧记录仍拒绝。

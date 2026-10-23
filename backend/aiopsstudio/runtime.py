@@ -162,11 +162,11 @@ class Runtime(TrustBoundary):
     def settings(self):
         return self.store.get("settings", "main") or {}
 
-    def require_owned(self, run_id: str, owner_id: str) -> dict:
+    def require_owned(self, run_id: str, owner_id: str, *, allow_legacy_archive=False) -> dict:
         record = self.store.get("run", run_id)
         if not record or resource_owner(record) != owner_id:
             raise HTTPException(404, "分析不存在")
-        return self.authorize_history(record, owner_id)
+        return self.authorize_history(record, owner_id, allow_legacy_archive=allow_legacy_archive)
 
     def _validate_links(self, payload: dict) -> None:
         """Association IDs supplied by a client never confer access."""
@@ -175,6 +175,13 @@ class Runtime(TrustBoundary):
             if value is not None and (not isinstance(value, str) or len(value) > 200):
                 raise HTTPException(422, "会话与关联分析标识格式无效")
         owner = payload["owner_id"]
+        from .legacy_archive import deny_execution
+        for field in ("conversation_id", "thread_id"):
+            if payload.get(field):
+                linked = self.store.get("conversation", payload[field])
+                if linked and resource_owner(linked) != owner:
+                    raise HTTPException(404, "会话不存在")
+                deny_execution(self.store, "conversation", linked)
         conversation_id = payload.get("conversation_id")
         thread_id = payload.get("thread_id")
         if conversation_id:
@@ -268,7 +275,8 @@ class Runtime(TrustBoundary):
         """Expire terminal groups; preserve running, retained and externally referenced evidence."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, int(self.settings().get("retention_days", 7))))
         runs = self.store.list("run")
-        candidates = {r["id"] for r in runs if r.get("status") in TERMINAL and not r.get("conversation_id") and not r.get("retained") and not r.get("pinned")
+        from .legacy_archive import registered
+        candidates = {r["id"] for r in runs if not registered(self.store, "run", r) and r.get("status") in TERMINAL and not r.get("conversation_id") and not r.get("retained") and not r.get("pinned")
                       and not r.get("artifacts_expired_at") and parse_time(r.get("completed_at") or r.get("updated_at") or r["created_at"]) < cutoff}
         protected = set()
         def references(obj):
@@ -300,7 +308,7 @@ class Runtime(TrustBoundary):
                 self.store.save("evidence", evidence["id"], evidence)
             for invocation in self.store.list("invocation"):
                 if invocation.get("run_id") == run["id"]:
-                    minimal = {k: invocation[k] for k in ("id", "run_id", "source", "tool_name", "status", "created_at", "completed_at", "evidence_id", "elapsed_seconds") if k in invocation}
+                    minimal = {k: invocation[k] for k in ("id", "run_id", "owner_id", "access_scopes", "source", "tool_name", "status", "created_at", "completed_at", "evidence_id", "elapsed_seconds") if k in invocation}
                     minimal.update(expired=True, expired_at=stamp)
                     self.store.save("invocation", invocation["id"], minimal)
             frozen_dir = self.artifact_dir / "skills" / run["attempt_id"]
@@ -597,6 +605,8 @@ class Runtime(TrustBoundary):
 
     def _guard(self, run_id, kind=None, source_requests=0):
         run = self.store.get("run", run_id)
+        from .legacy_archive import deny_execution
+        deny_execution(self.store, "run", run)
         if getattr(self.app.state, "identity", None) is not None:
             user = self.store.get("user", resource_owner(run))
             if not user or user.get("enabled") is False:
@@ -1021,9 +1031,16 @@ class Runtime(TrustBoundary):
         self.store.save("invocation", invocation["id"], invocation)
         self._event(run_id, "tool_started", {"invocation_id": invocation["id"], "tool_name": tool_name})
         started = time.monotonic()
+        def accept(response):
+            def save():
+                # Recheck while holding the same Store transaction that accepts
+                # the response; in-flight revocation must precede any file write.
+                self._source_scope(self.store.get("run", run_id), source, tool_name, arguments)
+                return self._persist_evidence(run_id, invocation, response)
+            return self.store.atomic(save)
         try:
             response = await fn()
-            record, data = self._persist_evidence(run_id, invocation, response)
+            record, data = accept(response)
             self.policies.authorize_material(record, subject_id=resource_owner(run), snapshot=run.get("policy_snapshot"))
             invocation.update(status="failed" if response.get("isError") else "partial" if record["truncated"] else "succeeded", evidence_id=record["id"])
             if self.store.get("run", run_id)["purpose"] in {"investigation", "skill_test"}:
@@ -1037,10 +1054,13 @@ class Runtime(TrustBoundary):
         except asyncio.CancelledError:
             invocation.update(status="cancelled", error={"code": "interrupted", "message": "在途调用已取消，源端是否完成读取未知"})
             raise
+        except PolicyError as error:
+            invocation.update(status="failed", error={"code": error.code, "message": "源授权已变化，响应未接受"})
+            raise
         except Exception as error:
             invocation.update(status="failed", error={"code": (getattr(error, "code", None) or "source_error"), "message": "源调用未完成；请核对连接、授权与固定查询参数，未取得范围保持未知"})
             # Persist errors through the identical evidence pipeline before model sees them.
-            record, data = self._persist_evidence(run_id, invocation, {"isError": True, "error": invocation["error"]})
+            record, data = accept({"isError": True, "error": invocation["error"]})
             invocation["evidence_id"] = record["id"]
             return {"evidence_id": record["id"], "isError": True, "response": data}
         finally:
@@ -1567,15 +1587,18 @@ claims.kind 仅允许 observation/potential_impact/anomaly/normal/candidate/root
         self._finish(run_id, "partial" if material_gaps else "succeeded", report)
 
     def detail(self, run_id, *, owner_id: str | None = None):
-        run = self.require_owned(run_id, owner_id or "admin")
-        run["events"] = self.store.events(run_id)
-        return self.public(run)
+        run = self.require_owned(run_id, owner_id or "admin", allow_legacy_archive=True)
+        data = self.public(run, allow_legacy_archive=True)
+        data["events"] = [] if data.get("legacy_archive") else self.store.events(run_id)
+        return data
 
-    def public(self, run):
+    def public(self, run, *, allow_legacy_archive=False):
         # Idempotent submission/retry also calls this projection; it must not
         # replay a saved report after source access was revoked.
-        self.authorize_history(run, resource_owner(run))
-        data = self.safe(copy.deepcopy(run), run.get("id"))
+        self.authorize_history(run, resource_owner(run), allow_legacy_archive=allow_legacy_archive)
+        from .legacy_archive import archived, label
+        is_archive = allow_legacy_archive and archived(self.store, "run", run, resource_owner(run))
+        data = self.safe(label(run) if is_archive else copy.deepcopy(run), run.get("id"))
         data.pop("_request", None)
         # Configuration references may be inspected, never connection credentials or backend paths.
         data.pop("config_snapshot", None)
@@ -1724,10 +1747,10 @@ def configure_runtime(app, store):
             if resource_owner(record) != owner:
                 continue
             try:
-                runtime.authorize_history(record, owner)
+                runtime.authorize_history(record, owner, allow_legacy_archive=True)
             except HTTPException:
                 continue
-            items.append(runtime.public(record))
+            items.append(runtime.public(record, allow_legacy_archive=True))
         return {"items": items}
 
     @router.post("/runs")

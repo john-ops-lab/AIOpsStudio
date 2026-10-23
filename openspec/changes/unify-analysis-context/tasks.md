@@ -18,3 +18,8 @@
 - [x] 3.2 无时间绑定的 topology 历史能力降为 unknown，禁止由当前快照断言历史。
 - [x] 3.3 对外运行上下文去除全局映射、目录及源偏差，管理配置保留管理员边界。
 - [x] 3.4 记录独立复核发现、修复、首败和验证限制，同步 analysis-context 主规格。
+
+## 4. PR review corrections
+
+- [x] 4.1 Preserve explicit source coverage limits in successful Prometheus responses and add a grounding regression.
+- [x] 4.2 Record the reproduced first failure and final targeted checks.

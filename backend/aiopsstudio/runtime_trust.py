@@ -33,9 +33,13 @@ class TrustBoundary:
         return MaterialReader(self.store, self.artifact_dir, authorize_material=lambda record, owner, run:
             self.policies.authorize_material(record, subject_id=owner, snapshot=run.get("policy_snapshot")))
 
-    def authorize_history(self, run, owner, _seen=None):
+    def authorize_history(self, run, owner, _seen=None, *, allow_legacy_archive=False):
         if (run.get("owner_id") or "admin") != owner:
             raise HTTPException(404, "分析不存在或当前不可访问")
+        from .legacy_archive import archived, deny_execution
+        if allow_legacy_archive and archived(self.store, "run", run, owner):
+            return run
+        deny_execution(self.store, "run", run)
         seen = set(_seen or ())
         if run.get("id") in seen:
             raise HTTPException(404, "分析不存在或当前不可访问")
@@ -45,6 +49,11 @@ class TrustBoundary:
         if derived and not run.get("evidence") and run.get("trust_version") != "trusted-runtime/1":
             raise HTTPException(404, "分析不存在或当前不可访问")
         try:
+            # A revoked in-flight response may correctly leave no evidence.
+            # Its saved invocation arguments still carry source-bound identity.
+            for invocation in self.store.list("invocation"):
+                if invocation.get("run_id") == run.get("id") and invocation.get("source") not in {None, "model"}:
+                    self.policies.authorize_material(invocation, subject_id=owner, snapshot=run.get("policy_snapshot"))
             for evidence in run.get("evidence", []):
                 self.policies.authorize_material(evidence, subject_id=owner, snapshot=run.get("policy_snapshot"))
             for previous in run.get("history_context", {}).get("rounds", []):
@@ -240,28 +249,56 @@ class TrustBoundary:
         status, count, begin, end, pages, stale = "unknown", None, None, None, None, False
         if isinstance(doc, dict):
             supplied = doc.get("coverage") if isinstance(doc.get("coverage"), dict) else {}
-            status = supplied.get("status", "failed" if native.get("isError") else "unknown")
-            if status not in {"complete", "empty", "forbidden", "failed", "stale", "partial", "historical_unsupported", "unknown"}:
-                status = "unknown"
+            states = {"complete", "empty", "forbidden", "failed", "stale", "partial", "historical_unsupported", "unknown"}
+            explicit_status = supplied.get("status") if supplied.get("status") in states else None
+            failed = bool(isinstance(native, dict) and native.get("isError"))
+            status = "failed" if failed else explicit_status or "unknown"
             begin, end = supplied.get("start"), supplied.get("end")
-            pages = supplied.get("pagination_complete")
-            stale = supplied.get("stale", False)
+            pages = supplied.get("pagination_complete") if type(supplied.get("pagination_complete")) is bool else None
+            stale = supplied.get("stale") is True
+            truncated = truncated or supplied.get("truncated") is True or doc.get("truncated") is True
+            continuation = any(value.get("has_more") is True or value.get("next_cursor") not in (None, "")
+                               or value.get("continuation_token") not in (None, "") for value in (doc, supplied))
+            if continuation:
+                pages = False
             data = doc.get("data")
-            if doc.get("status") == "success" and isinstance(data, dict) and isinstance(data.get("result"), list):
+            if (doc.get("status") == "success" and isinstance(data, dict)
+                    and data.get("resultType") in {"matrix", "vector"} and isinstance(data.get("result"), list)):
                 rows = data["result"]; count = len(rows)
-                samples = [point for row in rows for point in row.get("values", [row["value"]] if "value" in row else []) if isinstance(point, list) and len(point) == 2]
-                times = [point[0] for point in samples if isinstance(point[0], (float, int)) and not isinstance(point[0], bool)]
-                if times:
+                try:
                     from datetime import datetime, timezone
-                    begin = datetime.fromtimestamp(min(times), timezone.utc).isoformat()
-                    end = datetime.fromtimestamp(max(times), timezone.utc).isoformat()
-                # A successful query is bounded to this one declared query,
-                # never global business/source coverage.
-                status, pages = ("empty" if not rows else "complete"), True
+                    import math
+                    samples = []
+                    for row in rows:
+                        if not isinstance(row, dict) or not isinstance(row.get("metric"), dict):
+                            raise ValueError()
+                        points = row.get("values") if data["resultType"] == "matrix" else [row.get("value")]
+                        if not isinstance(points, list):
+                            raise ValueError()
+                        for point in points:
+                            if (not isinstance(point, list) or len(point) != 2 or type(point[0]) not in (int, float)
+                                    or not math.isfinite(point[0])):
+                                raise ValueError()
+                            samples.append(point[0])
+                    if samples:
+                        begin = datetime.fromtimestamp(min(samples), timezone.utc).isoformat()
+                        end = datetime.fromtimestamp(max(samples), timezone.utc).isoformat()
+                    # Success is a default only. Source limitations take precedence.
+                    if not failed and explicit_status is None:
+                        status = "empty" if not rows else "complete"
+                    elif status == "empty" and rows:
+                        status = "partial"
+                    if pages is None:
+                        pages = True
+                except (ValueError, TypeError, OverflowError, OSError):
+                    begin, end = None, None
+                    if status not in {"failed", "forbidden"}:
+                        status = "unknown"
             elif isinstance(doc.get("items"), list):
                 count = len(doc["items"])
-                pages = doc.get("has_more") is False or doc.get("next_cursor") is None and doc.get("has_more") is False
-                if supplied.get("status") in {"complete", "empty"} and not pages:
+                if pages is None:
+                    pages = True if doc.get("has_more") is False else None
+                if supplied.get("status") in {"complete", "empty"} and pages is not True:
                     status = "partial"
         result = coverage_record(binding, status=status, item_count=count, observed_start=begin, observed_end=end,
             pagination_complete=pages, truncated=truncated, stale=stale, historical=(binding or {}).get("kind") == "topology")
@@ -269,6 +306,7 @@ class TrustBoundary:
         return result
 
     def material_read(self, run_id, owner, body, *, consumer="user"):
+        self.require_owned(run_id, owner)
         result = self._reader().read(run_id, owner, body, consumer=consumer)
         if consumer == "model":
             result = self._typed(self.store.get("run", run_id), "reading", result)

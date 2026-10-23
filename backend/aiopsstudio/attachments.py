@@ -32,7 +32,11 @@ class AttachmentsService:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.authorize_run = None
 
-    def _authorize_report(self, record, owner_id):
+    def _authorize_report(self, record, owner_id, *, allow_legacy_archive=False):
+        from .legacy_archive import archived, deny_execution
+        if allow_legacy_archive and archived(self.store, "attachment", record, owner_id):
+            return
+        deny_execution(self.store, "attachment", record)
         if record.get("kind") != "generated_report" and not record.get("run_id"):
             return
         if not record.get("run_id"):
@@ -58,12 +62,12 @@ class AttachmentsService:
         result["download_url"] = "/api/attachments/" + record["id"] + "/download"
         return result
 
-    def require_owned(self, id, owner_id, conversation_id=None):
+    def require_owned(self, id, owner_id, conversation_id=None, *, allow_legacy_archive=False):
         record = self.store.get("attachment", id)
         if not record or resource_owner(record) != owner_id or (conversation_id and record.get("conversation_id") != conversation_id):
             raise HTTPException(404, "附件不存在")
         self._conversation(record["conversation_id"], owner_id)
-        self._authorize_report(record, owner_id)
+        self._authorize_report(record, owner_id, allow_legacy_archive=allow_legacy_archive)
         return record
 
     def list(self, owner_id, conversation_id):
@@ -73,10 +77,11 @@ class AttachmentsService:
             if resource_owner(record) != owner_id or record.get("conversation_id") != conversation_id:
                 continue
             try:
-                self._authorize_report(record, owner_id)
+                self._authorize_report(record, owner_id, allow_legacy_archive=True)
             except (HTTPException, PolicyError):
                 continue
-            visible.append(self.public(record))
+            from .legacy_archive import archived, label
+            visible.append(self.public(label(record) if archived(self.store, "attachment", record, owner_id) else record))
         return visible
 
     def _owner_dir(self, owner_id):
@@ -115,7 +120,9 @@ class AttachmentsService:
 
     def _save(self, owner_id, conversation_id, name, media_type, data, *, kind="upload", run_id=None):
         def save():
-            self._conversation(conversation_id, owner_id)
+            conversation = self._conversation(conversation_id, owner_id)
+            from .legacy_archive import deny_execution
+            deny_execution(self.store, "conversation", conversation)
             self._authorize_report({"kind": kind, "run_id": run_id}, owner_id)
             if run_id:
                 previous = next((r for r in self.store.list("attachment") if r.get("kind") == kind and r.get("run_id") == run_id and resource_owner(r) == owner_id), None)
@@ -168,6 +175,8 @@ class AttachmentsService:
         return self._save(owner_id, conversation_id, name, media_type.lower(), data)
 
     def reading_context(self, owner_id, conversation_id, attachment_ids):
+        from .legacy_archive import deny_execution
+        deny_execution(self.store, "conversation", self._conversation(conversation_id, owner_id))
         if not isinstance(attachment_ids, list) or len(attachment_ids) > 20 or any(not isinstance(id, str) for id in attachment_ids):
             raise HTTPException(422, "附件引用须为最多 20 个 ID 的列表")
         result, remaining = [], TEXT_TOTAL
@@ -219,11 +228,13 @@ def configure_attachments(app):
 
     @app.get("/api/attachments/{id}")
     async def metadata(id: str, request: Request):
-        return service.public(service.require_owned(id, actor_id(request)))
+        record = service.require_owned(id, actor_id(request), allow_legacy_archive=True)
+        from .legacy_archive import archived, label
+        return service.public(label(record) if archived(service.store, "attachment", record, actor_id(request)) else record)
 
     @app.get("/api/attachments/{id}/download")
     async def download(id: str, request: Request):
-        record = service.require_owned(id, actor_id(request))
+        record = service.require_owned(id, actor_id(request), allow_legacy_archive=True)
         path = service._path(record)
         if not path.is_file():
             raise HTTPException(410, "附件文件已不可用")

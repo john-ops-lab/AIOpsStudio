@@ -84,3 +84,7 @@
 ```
 
 该响应示例要求管理员事先核实该源分区固定属于四维范围，且每条 `/rows` 记录都有真实 `/source_id`。固定分区不能由模型自报；源实际跨分区时必须改为逐行 scope_fields，不能复用示例把其他对象绑定进来。若尚无可验证响应身份规则，应省略 result_identity 并明确对象 unknown。
+
+## PR 15 review: source coverage precedence
+
+The runtime may infer complete coverage only for a valid Prometheus response with no explicit limiting signal. Explicit source coverage status (including unknown), incomplete pagination, continuation markers and truncation take precedence over a successful transport/result envelope. Malformed result rows or timestamps retain unknown coverage rather than crashing the attempt or certifying a result.

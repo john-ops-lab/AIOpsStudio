@@ -49,3 +49,9 @@
 - UI 对同一 run/evidence 读取投影片段；真实 API GET、PostgreSQL receipt.result、UI anchor 与数据一致，重复 POST anchor 稳定，原始 source_indices 与 projection_fields 正确。为单独验证精确引用入口，在私有 QA 报告中加入明确标注“服务端种入、非模型新结论”的引用示例，保留原模型报告；点击后实际读取同一 fragment，不宣称模型自动产生该引用。
 - frozen 单 run fixture 未登记 Chat 的空 incident_id 路径，首轮被出口拒绝且无模型/源调用；通过真实管理 UI 新建仅增加 /inputs/incident_id 精确允许项的 QA 策略修订后完成上述流程，未改生产边界或冻结 fixture。之后在真实 UI 禁用来源授权，run/evidence/conversation/fragment/material-read 五条实际 API 均返回不泄露存在性的 404；页面重载显示拒绝，原值与锚点不再可见。首次验收脚本假定 403，保留该 oracle 错误，不当作产品错误。
 - 最终 build 通过（1.59s），保留现有 chunk 提醒；最终 Chrome 控制台 warn/error 为 0，桌面截图已目视，截图、实际 ID、原始收据与详细 checks 仅保留在仓库外私有临时目录，不作为公开资产。该流程使用合成模型/源，属于真实 API/存储/UI 集成验收，仍不等于真实业务验收。
+
+## PR 15 functional review correction
+
+The first in-memory reproduction returned `complete`, `pagination_complete=true`, and no reasons for a successful Prometheus payload explicitly carrying `coverage.status=partial` and `pagination_complete=false`. Runtime inference now preserves explicit limiting states, incomplete pagination, continuation and truncation; malformed result rows/timestamps degrade to unknown. The regression crosses into deterministic grounding and verifies that such a claim remains unverified.
+
+Mac local targeted check: `pytest -q backend/tests/test_pr15_coverage.py backend/tests/test_analysis_context.py backend/tests/test_grounded_reporting.py` — 111 passed. This is synthetic protocol/grounding verification, with no model or source network call and no existing application state opened. Final aggregate validation is recorded by the integration review.

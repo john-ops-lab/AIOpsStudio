@@ -34,3 +34,11 @@
 ## Risks
 
 仅声明 run.target 而未约束工具参数不足以授权；任何自由查询必须由明确全源权限或可靠服务端查询目录/参数约束支持。任意文本不能自动识别全部业务敏感内容，未登记的日志/附件正文按默认拒绝处理。合成 SDK 捕获验证已知协议路径，不能代表所有 provider、源 schema 或未来导出形式。此变更仅定义未来 Case 逐读者授权，R13 的真实共享链路另验，不把它列为已实现 API。
+
+## PR 15 review: visible revocation
+
+Client resource requests clear previously rendered protected data on authoritative 401/403/404 responses and policy-unavailable 503 responses. Already open evidence modals revalidate their evidence metadata and clear local fragment results on denial. Fragment GETs are not polled because each successful read consumes a budget; evidence authorization is polled instead. Transient network/server faults retain the existing data with an error so outages do not erase unrelated local user input.
+
+### PR review: in-flight source acceptance
+
+源返回进入证据保存前，在 Store 原子操作内再次核对当前主体、凭据与范围。PolicyError 直接终止并保留固定失败调用状态，不进入普通源错误补存路径；源异常也须通过当前范围才能保存失败证据。

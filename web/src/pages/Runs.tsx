@@ -13,6 +13,7 @@ import {
 import {
   dateTime,
   json,
+  invalidatesResource,
   list,
   post,
   requestId,
@@ -166,28 +167,36 @@ export function EvidenceModal({
   onClose: () => void;
 }) {
   const [evidenceId, anchorId] = id.split("#", 2);
-  const resource = useResource(`/evidence/${encodeURIComponent(evidenceId)}`);
+  const resource = useResource(`/evidence/${encodeURIComponent(evidenceId)}`, 4000);
   const anchor = useResource(anchorId ? `/fragments/${encodeURIComponent(anchorId)}` : null);
   const action = useAction();
   const [pointer, setPointer] = useState(""), [offset, setOffset] = useState(0), [limit, setLimit] = useState(100), [series, setSeries] = useState(""), [fields, setFields] = useState(""), [start, setStart] = useState(""), [end, setEnd] = useState(""), [timeField, setTimeField] = useState("");
   const [fragment, setFragment] = useState<Entity | null>(null);
+  const [fragmentDenied, setFragmentDenied] = useState(false);
   const currentId = useRef(id); currentId.current = id;
-  useEffect(() => { setFragment(null); setPointer(""); setOffset(0); setLimit(100); setSeries(""); setFields(""); setStart(""); setEnd(""); setTimeField(""); action.setError(""); }, [id]);
-  const selectedFragment = fragment || anchor.data;
+  useEffect(() => { setFragment(null); setFragmentDenied(false); setPointer(""); setOffset(0); setLimit(100); setSeries(""); setFields(""); setStart(""); setEnd(""); setTimeField(""); action.setError(""); }, [id]);
+  const denied = resource.accessDenied || anchor.accessDenied || fragmentDenied;
+  useEffect(() => { if (denied) { setFragment(null); anchor.setData(null); } }, [denied]);
+  const selectedFragment = denied ? null : fragment || anchor.data;
   async function read(next = 0, savedSelector?: Entity) {
     await action.act("read", async () => {
       if (!resource.data?.run_id) throw new Error("此证据没有关联分析轮次，暂不能定向读取。");
       if (Boolean(start) !== Boolean(end)) throw new Error("片段时间筛选须同时填写开始与结束。");
       const selector = savedSelector ? { ...savedSelector, offset: next } : { pointer, offset: next, limit, ...(series !== "" ? { series: Number(series) } : {}), ...(fields.trim() ? { fields: fields.split(",").map((item) => item.trim()).filter(Boolean) } : {}), ...(start && end ? { time_start: new Date(start).toISOString(), time_end: new Date(end).toISOString(), ...(timeField ? { time_field: timeField } : {}) } : {}) };
-      const result = await post(`/runs/${encodeURIComponent(resource.data.run_id)}/material-reads`, { resource_type: "evidence", evidence_id: evidenceId, selector });
-      if (currentId.current === id) { setFragment(result); setOffset(next); }
+      try {
+        const result = await post(`/runs/${encodeURIComponent(resource.data.run_id)}/material-reads`, { resource_type: "evidence", evidence_id: evidenceId, selector });
+        if (currentId.current === id) { setFragment(result); setFragmentDenied(false); setOffset(next); }
+      } catch (error) {
+        if (currentId.current === id && invalidatesResource(error)) { setFragmentDenied(true); resource.setData(null); }
+        throw error;
+      }
     });
   }
   return (
     <Modal title="证据详情" onClose={onClose} wide>
       <Notice error={resource.error || action.error || (!fragment ? anchor.error : "")} />
       {resource.loading ? <Loading /> : null}
-      {resource.data ? (
+      {resource.data && !denied ? (
         <>
           <Metadata
             items={Object.entries(resource.data)
@@ -196,7 +205,7 @@ export function EvidenceModal({
           />
           <Coverage value={resource.data.coverage} />
           <details className="material-reader" open={Boolean(anchorId)}><summary>定向读取已保存证据</summary><p className="muted">仅重读本轮已保存材料，不重新查询源；保存时已截断的部分不能在此恢复。</p><form className="stack" onSubmit={(event) => { event.preventDefault(); void read(offset); }}><div className="form-grid">
-            <Field label="JSON Pointer" hint="空值读取根；例如 /structuredContent/data"><input value={pointer} onChange={(event) => setPointer(event.target.value)} placeholder="/structuredContent/data" /></Field>
+            <Field label="JSON Pointer" hint="相对解包后的逻辑 JSON 根；例如 /data/result"><input value={pointer} onChange={(event) => setPointer(event.target.value)} placeholder="/data/result" /></Field>
             <Field label="起始位置"><input type="number" min={0} step={1} value={offset} onChange={(event) => setOffset(Number(event.target.value))} /></Field>
             <Field label="每页数量"><input type="number" min={1} max={200} step={1} value={limit} onChange={(event) => setLimit(Number(event.target.value))} /></Field>
             <Field label="序列下标（可选）"><input type="number" min={0} step={1} value={series} onChange={(event) => setSeries(event.target.value)} /></Field>
@@ -237,12 +246,13 @@ function RunDetail({
   const pendingMessage = useRef<{ content: string; id: string } | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
   const run = resource.data;
+  useEffect(() => { if (resource.accessDenied) setEvidence(null); }, [resource.accessDenied]);
   const isInvestigation =
     !run || ["investigation", "skill_test"].includes(run.purpose);
   useEffect(() => {
     streamCursor.current = 0;
     setStream("连接中");
-    if (run && !["queued", "running"].includes(run.status)) {
+    if (run && (run.legacy_archive || !["queued", "running"].includes(run.status))) {
       setStream("记录已持久化");
       return;
     }
@@ -270,7 +280,7 @@ function RunDetail({
       events.close();
       window.clearTimeout(timer);
     };
-  }, [id, run?.status, resource.reload]);
+  }, [id, run?.status, run?.legacy_archive, resource.reload]);
   useEffect(() => {
     chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [run?.messages?.length]);
@@ -314,7 +324,7 @@ function RunDetail({
         <Empty title="无法读取分析" detail="请刷新或从列表中重新选择记录。" />
       </div>
     );
-  const active = ["queued", "running"].includes(run.status);
+  const active = !run.legacy_archive && ["queued", "running"].includes(run.status);
   const artifactFailure = run.artifact_error || run.report_attachment_error;
   const events = run.events || [];
   const loaded = events.some((event) => event.type === "skill_loaded");
@@ -355,6 +365,7 @@ function RunDetail({
   ];
   return (
     <div className="run-detail">
+      {run.legacy_archive ? <Notice message={readable(run.legacy_archive.notice) || "升级前历史只读档案，未按当前规则重新核验。请新建会话继续分析。"} /> : null}
       {artifactFailure ? <Notice error={`回复或报告制品保存失败：${readable(artifactFailure)}`} /> : null}
       <header className="run-heading">
         <div>
@@ -369,7 +380,7 @@ function RunDetail({
         </div>
         <div className="actions">
           <Status value={run.status} />
-          {active ? (
+          {!run.legacy_archive && (active ? (
             <Button
               variant="ghost"
               onClick={() => void command("cancel")}
@@ -385,7 +396,7 @@ function RunDetail({
             >
               重新运行
             </Button>
-          )}
+          ))}
         </div>
       </header>
       <div className="run-meta">

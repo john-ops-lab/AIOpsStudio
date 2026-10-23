@@ -143,3 +143,32 @@ def test_fragment_anchor_does_not_cover_unread_fields_or_original_rows(material,
     result = reader.read("run_fixture", "alice", {"resource_type": "evidence", "evidence_id": record["id"], "selector": selection})
     assert result["data"] == expected_data
     assert _anchor_valid(result["anchor_id"], record, pointer, store.list("material_read")) is False
+
+
+@pytest.mark.asyncio
+async def test_inflight_source_revoke_rejects_before_any_evidence_is_saved(trusted):
+    rt, case = trusted
+    run = await attempt(rt, case)
+    definition = run["analysis_context"]["query_catalog"]["entries"][0]
+    source, tool = definition["source_id"], definition["tool_name"]
+    arguments, binding = rt._bind_source(run, source, tool, {}, {"definition_digest": definition["definition_digest"]})
+    seen = []
+    async def response_after_revoke():
+        seen.append("source-started")
+        policy = rt.store.get("access_policy", "main")
+        policy.update(version="source-revoked-in-flight", denies=[{"subjects": [run["owner_id"]]}])
+        rt.store.save("access_policy", "main", policy)
+        return {"isError": False, "data": "SYNTHETIC_REVOKED_RESPONSE_MUST_NOT_BE_SAVED"}
+    with pytest.raises(PolicyError):
+        await rt._invoke_source(run["id"], source, tool, arguments, response_after_revoke, query_binding=binding)
+    assert seen == ["source-started"]
+    assert rt.store.list("evidence") == []
+    assert rt.store.get("run", run["id"])["evidence"] == []
+    assert not list(rt.artifact_dir.glob("evidence/**/*.json"))
+    invocation = rt.store.list("invocation")[0]
+    assert invocation["status"] == "failed" and not invocation.get("evidence_id")
+    assert "SYNTHETIC_REVOKED_RESPONSE" not in json.dumps(invocation)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as error:
+        rt.authorize_history(rt.store.get("run", run["id"]), run["owner_id"])
+    assert error.value.status_code == 404

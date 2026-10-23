@@ -48,6 +48,10 @@
 - **WHEN** 读取没有新上下文版本或有效映射目录的历史数据
 - **THEN** 保留 legacy_unverified/unknown，不填充新完整标志或重写旧快照
 
+#### Scenario: Successful response includes incomplete coverage
+- **WHEN** a successful Prometheus response explicitly reports partial, failed, forbidden, stale, unknown, incomplete pagination, truncation or a continuation marker
+- **THEN** runtime coverage SHALL preserve or conservatively degrade that limitation and MUST NOT replace it with complete/empty; structured claims cannot become verified by the success envelope alone
+
 ### Requirement: 对外上下文只返回已选范围
 系统 SHALL 将完整身份映射、查询目录和源偏差保留在服务端冻结快照，并在对外运行详情移除 query_catalog、source_offsets、identity.mappings/candidates、配置/策略快照和后端路径。当前对象、窗口、版本/摘要、状态与澄清缺口可按 owner 和最新来源授权返回；管理员配置入口不授予读取他人历史的权限。
 

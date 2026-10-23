@@ -58,7 +58,7 @@ def configure_api(app: FastAPI):
         if not callable(authorize):
             return not (record.get("evidence") or record.get("history_context") or record.get("report"))
         try:
-            authorize(record, owner)
+            authorize(record, owner, allow_legacy_archive=True)
             return True
         except (HTTPException, PolicyError):
             return False
@@ -376,8 +376,8 @@ def configure_api(app: FastAPI):
             if run is None:
                 return None
             runtime = getattr(app.state, "runtime", None)
-            source = runtime.public(run) if runtime else run
-            allowed = {"id", "thread_id", "conversation_id", "attempt_id", "purpose", "title", "status", "skill_id", "skill_version", "target", "incident_id", "analysis_start", "analysis_end", "created_at", "updated_at", "error", "usage", "cancel_requested", "report_attachment"}
+            source = runtime.public(run, allow_legacy_archive=True) if runtime else run
+            allowed = {"id", "thread_id", "conversation_id", "attempt_id", "purpose", "title", "status", "skill_id", "skill_version", "target", "incident_id", "analysis_start", "analysis_end", "created_at", "updated_at", "error", "usage", "cancel_requested", "report_attachment", "legacy_archive"}
             return {key: value for key, value in source.items() if key in allowed}
         visible_mcps = [m for item in store.list("mcp") if (m := catalog_view("mcp", item, request)) is not None]
         counts = {"skills": sum(catalog_view("skill", item, request) is not None for item in store.list("skill")), "mcp_servers": len(visible_mcps),

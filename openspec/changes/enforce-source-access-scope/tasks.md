@@ -17,3 +17,10 @@
 - [ ] 3.1 R13 实现 Case 共享/撤回后，对每位读者及新增导出形式单独验收；当前仅提供约束合同。
 
 集成记录：[PR #15](https://github.com/john-ops-lab/AIOpsStudio/pull/15)、[M1验证](../../../docs/validation/2026-10-23-m1.md)。以上“记录”任务表示已分别登记真实模型、业务和用户状态；真实业务源未验收，用户接受待反馈，后续范围仍未完成。
+
+## 4. PR review corrections
+
+- [x] 4.1 Clear denied cached report/conversation data and already-open saved fragments after policy revocation.
+- [x] 4.2 Verify current-page revocation and a transient-error control without replacing production state.
+
+- [x] 4.3 源响应在途撤权在写盘前重验；调用历史继续重验scope并覆盖过期元数据回归。

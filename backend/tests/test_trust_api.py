@@ -212,7 +212,7 @@ def seed_history(api, owner="admin", client=None):
     run = api.store.save("run", run_id, {"owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"],
         "attempt_id": "history-attempt", "status": "partial", "access_scopes": [scope], "messages": [], "events": [],
         "report": {"analysis": "private-source-derived-analysis", "limitations": []}})
-    def authorize_history(item, reader):
+    def authorize_history(item, reader, **kwargs):
         if (item.get("owner_id") or "admin") != reader:
             raise HTTPException(404, "不存在")
         try:
@@ -220,7 +220,7 @@ def seed_history(api, owner="admin", client=None):
         except PolicyError:
             raise HTTPException(404, "不存在或当前不可访问") from None
     api.app.state.runtime.authorize_history = authorize_history
-    api.app.state.runtime.public = lambda item: {key: item[key] for key in ("id", "status", "report") if key in item}
+    api.app.state.runtime.public = lambda item, **kwargs: {key: item[key] for key in ("id", "status", "report") if key in item}
     attachment = api.app.state.attachments.save_report(run)
     run["report_attachment"] = attachment
     api.store.save("run", run_id, run)

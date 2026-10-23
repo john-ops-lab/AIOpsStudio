@@ -44,15 +44,19 @@ class ConversationsService:
             result[key] = field.strip() if isinstance(field, str) else None
         return result
 
-    def require_owned(self, id, owner_id):
+    def require_owned(self, id, owner_id, *, allow_legacy_archive=False):
         item = self.store.get("conversation", id)
         if not item or resource_owner(item) != owner_id:
             raise HTTPException(404, "会话不存在")
-        self._authorize_history(item, owner_id)
+        self._authorize_history(item, owner_id, allow_legacy_archive=allow_legacy_archive)
         return item
 
-    def _authorize_history(self, conversation, owner_id):
+    def _authorize_history(self, conversation, owner_id, *, allow_legacy_archive=False):
         """No saved assistant body/title bypasses a later source revocation."""
+        from .legacy_archive import archived, deny_execution
+        if allow_legacy_archive and archived(self.store, "conversation", conversation, owner_id):
+            return
+        deny_execution(self.store, "conversation", conversation)
         references = {message.get("run_id") for message in conversation.get("messages", []) if message.get("run_id")}
         if conversation.get("active_run_id"):
             references.add(conversation["active_run_id"])
@@ -81,10 +85,11 @@ class ConversationsService:
             if resource_owner(conversation) != owner_id:
                 continue
             try:
-                self._authorize_history(conversation, owner_id)
+                self._authorize_history(conversation, owner_id, allow_legacy_archive=True)
             except (HTTPException, PolicyError):
                 continue
-            visible.append(conversation)
+            from .legacy_archive import archived, label
+            visible.append(label(conversation) if archived(self.store, "conversation", conversation, owner_id) else conversation)
         return sorted(visible, key=lambda c: c.get("updated_at", ""), reverse=True)
 
     def create(self, owner_id, payload):
@@ -281,8 +286,15 @@ class ConversationsService:
         return attachment
 
     def detail(self, id, owner_id):
-        result = self.require_owned(id, owner_id)
+        result = self.require_owned(id, owner_id, allow_legacy_archive=True)
         runtime = getattr(self.app.state, "runtime", None)
+        from .legacy_archive import archived, label
+        if archived(self.store, "conversation", result, owner_id):
+            result = label(result)
+            runs = [r for r in self.store.list("run") if resource_owner(r) == owner_id and (r.get("conversation_id") or r.get("thread_id")) == id]
+            result["runs"] = [runtime.public(r, allow_legacy_archive=True) for r in sorted(runs, key=lambda r: r.get("created_at", ""))] if runtime else []
+            result["attachments"] = self.app.state.attachments.list(owner_id, id)
+            return result
         runs = [r for r in self.store.list("run") if resource_owner(r) == owner_id and (r.get("conversation_id") or r.get("thread_id")) == id]
         for run in runs:
             represented = any(m.get("role") == "assistant" and m.get("run_id") == run["id"] for m in result.get("messages", []))
