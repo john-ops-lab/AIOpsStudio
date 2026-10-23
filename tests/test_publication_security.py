@@ -23,6 +23,8 @@ class PublicationGate(unittest.TestCase):
         self.root.mkdir()
         for folder in ['scripts', '.githooks']:
             shutil.copytree(SOURCE / folder, self.root / folder, ignore=shutil.ignore_patterns('__pycache__'))
+        (self.root / 'tests').mkdir()
+        shutil.copy2(SOURCE / 'tests/local_secret_scan.py', self.root / 'tests/local_secret_scan.py')
         (self.root / 'security').mkdir()
         (self.root / 'security/reviewed-assets.json').write_text('{"version":1,"png":{}}')
         self.command('git', 'init', '-b', 'main')
@@ -161,6 +163,8 @@ class PublicationGate(unittest.TestCase):
         self.command('git', 'config', 'easyops.securityProfile', str(profile))
         self.write('guide.md', credential)
         self.denied(self.gate(), 'known_private_material', credential)
+        result = self.command(sys.executable, '-c', "import sys;sys.path.insert(0,'tests');from local_secret_scan import known_secret_values;assert len(known_secret_values())==1;print('compatible read-only collector passed')")
+        self.assertNotIn(credential, result.stdout + result.stderr)
         secret.unlink()
         self.denied(self.gate(), 'private_source_unavailable', credential)
 

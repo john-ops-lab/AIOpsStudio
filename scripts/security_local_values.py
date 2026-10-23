@@ -25,7 +25,7 @@ def json_value(source):
     return value
 
 
-def collect(profile):
+def collect(profile, include_identifiers=True):
     values = set()
     def add(value):
         if isinstance(value, str) and len(value) >= 8:
@@ -59,7 +59,7 @@ def collect(profile):
                 raise ValueError()
             rows = connection.execute("SELECT kind,id,data FROM easyops_documents WHERE kind IN ('secret','user','session','model','mcp','skill')").fetchall()
             for kind, identifier, data in rows:
-                if re.fullmatch(r'[a-z]+_[0-9a-f]{16,}', identifier):
+                if include_identifiers and re.fullmatch(r'[a-z]+_[0-9a-f]{16,}', identifier):
                     add(identifier)
                 if kind == 'secret':
                     add(data['ciphertext']); add(cipher.decrypt(data['ciphertext'].encode()).decode())
@@ -72,7 +72,7 @@ def collect(profile):
 
 if __name__ == '__main__':
     try:
-        print(json.dumps(collect(json.load(sys.stdin)), ensure_ascii=True))
+        print(json.dumps(collect(json.load(sys.stdin), include_identifiers='--credentials-only' not in sys.argv[1:]), ensure_ascii=True))
     except Exception:
         print('Private source collection failed', file=sys.stderr)
         sys.exit(1)

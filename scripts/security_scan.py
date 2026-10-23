@@ -38,7 +38,7 @@ def git(*args, data=None):
     return run_git(*args, data=data).stdout
 
 
-def configured_private_values():
+def configured_private_values(include_identifiers=True):
     configured = run_git('config', '--local', '--get', 'easyops.securityProfile', check=False)
     if configured.returncode == 1:
         return [], []
@@ -57,7 +57,10 @@ def configured_private_values():
         python = ROOT / 'backend/.venv/bin/python'
         if not python.is_file():
             raise GateError('private_source_python_missing')
-        r = subprocess.run([str(python), str(ROOT / 'scripts/security_local_values.py')],
+        command = [str(python), str(ROOT / 'scripts/security_local_values.py')]
+        if not include_identifiers:
+            command.append('--credentials-only')
+        r = subprocess.run(command,
             input=json.dumps(profile), text=True, capture_output=True, timeout=20,
             env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
         if r.returncode:

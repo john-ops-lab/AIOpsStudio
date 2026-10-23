@@ -77,7 +77,7 @@ git diff --cached
 python3 scripts/install_security_hooks.py --local-profile /absolute/external/security-check.json
 ```
 
-启用私有比对需要当前副本的 `backend/.venv/bin/python`。数据库来源还需应用已锁定的 psycopg、cryptography 依赖；仅允许 IP 回环连接，并显式开启和核对 PostgreSQL 只读事务。读取 Vault 密文/明文、口令哈希、会话及配置实体标识；不使用应用初始化入口。无数据库段时不连接数据库。
+启用私有比对需要当前副本的 `backend/.venv/bin/python`。数据库来源还需应用已锁定的 psycopg、cryptography 依赖；仅允许 IP 回环连接，并显式开启和核对 PostgreSQL 只读事务。读取 Vault 密文/明文、口令哈希、会话及配置实体标识；不使用应用初始化入口。无数据库段时不连接数据库。旧验收入口 `known_secret_values()` 使用同一只读来源，仅返回凭据用于 API 保密检查，不把公开配置实体 ID 当成泄露；需先配置私有 profile。
 
 CI 没有此私有 profile，不上传配置或传递真实密钥；本机精确比对是公开前的额外门禁。真实配置和现场发生变化时同步更新仓库外来源描述或词表。
 
