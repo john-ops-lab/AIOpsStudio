@@ -1,5 +1,7 @@
 # EasyOps 开发路线图
 
+> 文档整合提示（2026-10-23）：本文件保留合并前的设计来源和既有链接。最新统一主文档为 [EasyOps 完整设计](EasyOps完整设计.md)，已实现/待验证/待开发状态及后续开发契约请以该文档和 OpenSpec 为准；本文件不再作为并行维护的最新设计。
+
 规划基线：2026-10-23；本次修订将竞品研究缺口纳入原有工作包。总路线图：[Issue #1](https://github.com/john-ops-lab/EasyOps/issues/1)；十三个实施 Issue 的实时状态以 GitHub 为准。本文件中的验收清单是交付条件，初始发布不表示已经完成。
 
 初次登记见[发布验证记录](../../openspec/changes/publish-development-roadmap/verification.md)；本次修订见[OpenSpec 记录](../../openspec/changes/align-roadmap-with-competitive-research/verification.md)及[增量设计](可信分析与协作增量设计-v0.1.md)。

@@ -18,7 +18,7 @@ OpenSpec change：`chat-workbench-user-history`，规格与设计位于 `openspe
 
 ---
 
-依据：[总体设计](docs/design/EasyOps总体设计-v0.1.md)（正文 v0.5）与[管理设计](docs/design/工作台Skill与MCP管理设计-v0.1.md)。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
+设计入口：[完整设计](docs/design/EasyOps完整设计.md)（2026-10-23 整合，区分当前实现与后续目标）；原 v0.5 总体及管理文档保留为来源。当前 API 契约以本合同、主规格和源码为准。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
 
 部署边界：应用、PostgreSQL、执行器与测试面向 Mac 本机；外部 CMDB、可观测和告警接口只读接入。端口、状态目录、数据库、可选 SSH 转发以及引导源配置均由部署者在仓库外提供，默认不启用转发。后续模型验证优先 MiniMax，不把历史模型结果改称为新模型验证。
 
