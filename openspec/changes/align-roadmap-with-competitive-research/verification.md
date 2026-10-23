@@ -18,7 +18,11 @@
 - 准确的十四项 Issue 标题/正文在隔离暂存树通过现有完整安全规则及 Gitleaks；仓库外私有 profile 启用，88 项已知私有材料比对，无命中。没有新增图片或素材。
 - 写前再次读取十四项，确认未发生并发编辑；仅更新标题/正文。写后 14/14 的准确正文和标题与复核稿一致，state/labels/assignees/milestone/locked/comments 保持原状，仍全部 open、验收未勾选。
 - 实际完整暂存树通过现有安全门禁及仓库外私有比对，无命中；已审查暂存差异，11 个文件均为设计/状态或本次 OpenSpec 规划记录，无应用代码、主规格及图片变更。
-- 正常推送与准确提交 CI 在完成后补充；未执行项不记为通过。
+- 文档提交 [11665a5](https://github.com/john-ops-lab/EasyOps/commit/11665a50e7c65a745ded982b26337f4761e38ce8) 已正常推送到 main，远端主分支 SHA 一致；11/11 修改文件的远端 Git blob 与本地提交逐项一致。
+- 提交钩子检查完整暂存树，推送钩子检查实际目标及全部祖先；完整历史扫描通过，仓库外私有 profile 启用，未绕过门禁。
+- 该准确提交的 [Publication security CI](https://github.com/john-ops-lab/EasyOps/actions/runs/39919962687) 成功；完整公开历史及合成 Git 回归均通过。
+- 本验证记录在上述发布与 CI 完成后补充；记录提交自身应按其 SHA 查看[安全工作流](https://github.com/john-ops-lab/EasyOps/actions/workflows/publication-security.yml)，不复用前一提交结果。
+- 最后对照初始提交，变更仅涉及 11 份设计/状态/OpenSpec 规划文件；应用源码、部署入口、脚本、测试、主规格及图片没有差异。
 
 ## 实现边界
 
