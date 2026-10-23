@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import re
 import ssl
@@ -22,6 +23,16 @@ class ConnectorError(RuntimeError):
         self.code = code
 
 
+def _observe(request_observer):
+    if request_observer is None:
+        return
+    observed = request_observer()
+    if inspect.isawaitable(observed):
+        if inspect.iscoroutine(observed):
+            observed.close()
+        raise ConnectorError("请求授权观察器必须为同步函数，未发送请求", "request_observer_invalid")
+
+
 class _BoundedStream(httpx.AsyncByteStream):
     def __init__(self, stream, limit):
         self.stream, self.limit = stream, limit
@@ -39,12 +50,23 @@ class _BoundedStream(httpx.AsyncByteStream):
 
 
 class _BoundedTransport(httpx.AsyncBaseTransport):
-    def __init__(self, context, limit):
+    def __init__(self, context, limit, request_observer=None, *, allowed_urls=None):
         self.transport = httpx.AsyncHTTPTransport(verify=context, retries=0, trust_env=False)
         self.limit = limit
+        self.request_observer = request_observer
+        self.allowed_urls = None if allowed_urls is None else frozenset(httpx.URL(url) for url in allowed_urls)
 
     async def handle_async_request(self, request):
+        if self.allowed_urls is not None and request.url not in self.allowed_urls:
+            raise ConnectorError("实际源请求目标与固定连接目的地不一致，未发送请求", "request_target_changed")
+        _observe(self.request_observer)
         response = await self.transport.handle_async_request(request)
+        # MCP follows same-origin redirects itself, ignoring the client's
+        # follow_redirects=False. Reject the response before the SDK can send
+        # its next request with this endpoint's credential and JSON-RPC body.
+        if 300 <= response.status_code < 400:
+            await response.aclose()
+            raise ConnectorError("源返回未批准重定向，未跟随 Location", "redirect_forbidden")
         response.stream = _BoundedStream(response.stream, self.limit)
         return response
 
@@ -103,7 +125,7 @@ def _url(config: dict) -> str:
 
 
 @asynccontextmanager
-async def _session(config: dict, vault):
+async def _session(config: dict, vault, request_observer=None):
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
     timeout = min(max(float(config.get("timeout_seconds", 30)), 1), 60)
@@ -111,7 +133,7 @@ async def _session(config: dict, vault):
         context = _tls(config)
         wire_limit = min(max(int(config.get("max_response_bytes", 1048576)), 1024), 8 * 1048576) + 65536
         async with httpx.AsyncClient(headers={**_headers(config, vault), "Accept-Encoding": "identity"}, verify=context,
-                                     transport=_BoundedTransport(context, wire_limit),
+                                     transport=_BoundedTransport(context, wire_limit, request_observer, allowed_urls=[_url(config)]),
                                      timeout=httpx.Timeout(timeout), follow_redirects=False,
                                      trust_env=False) as client:
             async with streamable_http_client(_url(config), http_client=client) as (read, write, _):
@@ -123,14 +145,14 @@ async def _session(config: dict, vault):
 _control_locks: dict[str, asyncio.Lock] = {}
 
 
-async def mcp_discover(config: dict, vault) -> dict:
+async def mcp_discover(config: dict, vault, request_observer=None) -> dict:
     """Official SDK handshake and complete bounded cursor traversal, never calls a tool."""
     key = config.get("id", config.get("url", ""))
     lock = _control_locks.setdefault(key, asyncio.Lock())
     if lock.locked():
         raise ConnectorError("此服务已有连接探测或工具发现请求", "control_busy")
     async with lock:
-        async with _session(config, vault) as (session, initialized):
+        async with _session(config, vault, request_observer) as (session, initialized):
             items, seen, cursor = [], set(), None
             for _ in range(50):
                 result = await session.list_tools(cursor=cursor)
@@ -165,10 +187,10 @@ def permitted_tool(config: dict, tool_name: str) -> dict:
     return matches[0]
 
 
-async def mcp_call(config: dict, vault, tool_name: str, arguments: dict) -> dict:
+async def mcp_call(config: dict, vault, tool_name: str, arguments: dict, request_observer=None) -> dict:
     frozen = permitted_tool(config, tool_name)
     Draft202012Validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
-    async with _session(config, vault) as (session, initialized):
+    async with _session(config, vault, request_observer) as (session, initialized):
         # A fresh connection must recheck remote definitions before dispatch.
         cursor, found, seen = None, None, set()
         for _ in range(50):
@@ -216,15 +238,17 @@ async def _get(config: dict, vault, path: str, params: dict | None = None, reque
     cached = _ongrid_tokens.get(token_key)
     if cached and cached[1] > time.monotonic():
         headers["Authorization"] = "Bearer " + cached[0]
-    async with httpx.AsyncClient(verify=_tls(config), headers=headers,
+    context = _tls(config)
+    fixed_get = httpx.URL(_url(config) + path, params=params)
+    fixed_urls = [fixed_get]
+    if password and config.get("email"):
+        fixed_urls.append(httpx.URL(_url(config) + "/v1/auth/login"))
+    async with httpx.AsyncClient(verify=context, headers={**headers, "Accept-Encoding": "identity"},
+                                 transport=_BoundedTransport(context, limit + 65536, request_observer, allowed_urls=fixed_urls),
                                  timeout=min(float(config.get("timeout_seconds", 15)), 60),
                                  follow_redirects=False, trust_env=False) as client:
-        if request_observer:
-            request_observer()
         async with client.stream("GET", _url(config) + path, params=params) as response:
             if response.status_code == 401 and password and config.get("email"):
-                if request_observer:
-                    request_observer()
                 login = await client.post(_url(config) + "/v1/auth/login", json={"email": config["email"], "password": password})
                 login.raise_for_status()
                 token_data = login.json()
@@ -234,8 +258,6 @@ async def _get(config: dict, vault, path: str, params: dict | None = None, reque
                 _ongrid_tokens[token_key] = (token, time.monotonic() + 300)
                 # Keep the refreshed credential in this HTTP client only.
                 client.headers["Authorization"] = "Bearer " + token
-                if request_observer:
-                    request_observer()
                 async with client.stream("GET", _url(config) + path, params=params) as retry:
                     retry.raise_for_status()
                     bounded = bytearray()
@@ -259,8 +281,7 @@ async def alert_list(settings: dict, vault, request_observer=None) -> dict:
     requests = 0
     def count():
         nonlocal requests
-        if request_observer:
-            request_observer()
+        _observe(request_observer)
         requests += 1
     for page in range(1, pages + 1):
         data = await _get(cfg, vault, "/v1/alerts/incidents", {"page": page, "page_size": 100}, count)
@@ -280,8 +301,7 @@ async def alert_detail(settings: dict, vault, id: str, request_observer=None) ->
     requests = 0
     def count():
         nonlocal requests
-        if request_observer:
-            request_observer()
+        _observe(request_observer)
         requests += 1
     detail = await _get(cfg, vault, f"/v1/alerts/incidents/{key}", request_observer=count)
     limitations = []

@@ -1,0 +1,106 @@
+{
+  "schema": "aiopsstudio-evaluation-input/1",
+  "id": "irrelevant-evidence",
+  "category": "irrelevant_evidence",
+  "work_packages": [
+    "R01",
+    "R02",
+    "R04"
+  ],
+  "versions": {
+    "model": {
+      "version": "m1-model/1",
+      "sha256": "2a03a0a90458cf5a7ae93ef257f2faf7384bf248161294fb2d3ab3fffdb0262a"
+    },
+    "skill": {
+      "version": "m1-skill/1",
+      "sha256": "bcca2e5a53d081bec291c19d65718488af163009121570993e987777259f41f7"
+    },
+    "tool_schema": {
+      "version": "m1-tool_schema/1",
+      "sha256": "330868503da827c38aa55a2d3743f7a6d8796e2ff472abbe0bdffdf8091ad16e"
+    },
+    "summarizer": {
+      "version": "m1-summarizer/1",
+      "sha256": "51e74e7a70a2044358289d73660cc1fa83c83820c4ef9278304e9ac2ebeae64c"
+    },
+    "query_catalog": {
+      "version": "m1-query_catalog/1",
+      "sha256": "9823cdea775b73f43451c9fa2e7080a4b520331473cb07ff1af02f6be6a265c4"
+    },
+    "privacy_policy": {
+      "version": "m1-privacy_policy/1",
+      "sha256": "7c190670382cb4ad9eb05b9ee3a0cbf276f9ba72fdf541295389df2a5b266803"
+    }
+  },
+  "request": {
+    "target": "demo-checkout",
+    "analysis_start": "2026-10-20T01:00:00Z",
+    "analysis_end": "2026-10-20T01:10:00Z",
+    "environment": "synthetic",
+    "message": "分析固定窗口内 demo-checkout 异常，保留未知与范围限制。",
+    "inputs": {
+      "source_tool": "read_snapshot"
+    }
+  },
+  "source": {
+    "snapshot_version": "synthetic-m1-snapshot/1",
+    "responses": {
+      "read_snapshot:0": {
+        "structuredContent": {
+          "schema_version": "synthetic-source/1",
+          "data": {
+            "facts": [
+              {
+                "subject": "demo-checkout",
+                "field": "error_rate",
+                "value": 0.18,
+                "unit": "ratio",
+                "observed_at": "2026-10-20T01:05:00Z"
+              }
+            ],
+            "unrelated": [
+              {
+                "subject": "unrelated-payments-service",
+                "status": "failed",
+                "note": "outside requested target, not supporting evidence"
+              }
+            ]
+          },
+          "effective_query": {
+            "start": "2026-10-20T01:00:00Z",
+            "end": "2026-10-20T01:10:00Z"
+          },
+          "scope": {
+            "environment": "synthetic",
+            "target": "demo-checkout"
+          },
+          "completeness": {
+            "status": "complete",
+            "reasons": []
+          },
+          "verification": {
+            "status": "passed",
+            "complete_for_query": true
+          },
+          "source": {
+            "system": "synthetic",
+            "source_freshness": "fresh",
+            "history_support": true
+          },
+          "coverage": {
+            "status": "complete",
+            "start": "2026-10-20T01:00:00Z",
+            "end": "2026-10-20T01:10:00Z",
+            "pagination_complete": true,
+            "stale": false
+          }
+        },
+        "isError": false
+      }
+    },
+    "sha256": "0761c21284bd5e3b84a43a2889f754df61d95168fde9f1fc8524ec570e8d7c2f"
+  },
+  "model_behavior": "read_then_report",
+  "checks": []
+}

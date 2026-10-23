@@ -9,10 +9,11 @@ import secrets
 from fastapi import HTTPException, Request
 
 from .identity import actor_id, resource_owner
+from .access_policy import PolicyError
 from .store import Store, utcnow
 
 TERMINAL = {"succeeded", "partial", "failed", "needs_input", "cancelled"}
-CONTEXT_FIELDS = {"skill_id", "skill_version", "model_id", "target", "incident_id", "analysis_start", "analysis_end", "environment"}
+CONTEXT_FIELDS = {"skill_id", "skill_version", "model_id", "target", "incident_id", "analysis_start", "analysis_end", "environment", "cluster", "namespace", "target_type", "target_identity", "windows", "baseline_window", "change_window", "validation_window"}
 
 
 class ConversationsService:
@@ -31,6 +32,12 @@ class ConversationsService:
             if key not in value:
                 continue
             field = value[key]
+            if key in {"target_identity", "windows", "baseline_window", "change_window", "validation_window"}:
+                from .material_reading import canonical
+                if field is not None and (not isinstance(field, dict) or len(canonical(field).encode()) > 8192):
+                    raise HTTPException(422, "结构化上下文字段必须是有界JSON对象")
+                result[key] = copy.deepcopy(field)
+                continue
             limit = 4096 if key == "target" else 512
             if field is not None and (not isinstance(field, str) or len(field) > limit):
                 raise HTTPException(422, f"上下文字段 {key} 必须为不超过 {limit} 字符的文本或 null")
@@ -41,10 +48,44 @@ class ConversationsService:
         item = self.store.get("conversation", id)
         if not item or resource_owner(item) != owner_id:
             raise HTTPException(404, "会话不存在")
+        self._authorize_history(item, owner_id)
         return item
 
+    def _authorize_history(self, conversation, owner_id):
+        """No saved assistant body/title bypasses a later source revocation."""
+        references = {message.get("run_id") for message in conversation.get("messages", []) if message.get("run_id")}
+        if conversation.get("active_run_id"):
+            references.add(conversation["active_run_id"])
+        runs = [run for run in self.store.list("run") if run.get("conversation_id") == conversation["id"] or run.get("thread_id") == conversation["id"] or run.get("id") in references]
+        if references - {run["id"] for run in runs} or any(message.get("role") == "assistant" and not message.get("run_id") for message in conversation.get("messages", [])):
+            raise HTTPException(404, "会话不存在或当前不可访问")
+        if not runs:
+            return
+        runtime = getattr(self.app.state, "runtime", None)
+        authorize = getattr(runtime, "authorize_history", None)
+        if not callable(authorize):
+            raise PolicyError("policy_unavailable_history")
+        for run in runs:
+            if resource_owner(run) != owner_id:
+                raise HTTPException(404, "会话不存在或当前不可访问")
+            try:
+                authorize(run, owner_id)
+            except PolicyError as error:
+                if error.code.startswith(("policy_missing", "policy_unavailable")):
+                    raise
+                raise HTTPException(404, "会话不存在或当前不可访问") from None
+
     def list(self, owner_id):
-        return sorted([c for c in self.store.list("conversation") if resource_owner(c) == owner_id], key=lambda c: c.get("updated_at", ""), reverse=True)
+        visible = []
+        for conversation in self.store.list("conversation"):
+            if resource_owner(conversation) != owner_id:
+                continue
+            try:
+                self._authorize_history(conversation, owner_id)
+            except (HTTPException, PolicyError):
+                continue
+            visible.append(conversation)
+        return sorted(visible, key=lambda c: c.get("updated_at", ""), reverse=True)
 
     def create(self, owner_id, payload):
         key = payload.get("client_request_id")
@@ -55,9 +96,9 @@ class ConversationsService:
             raise HTTPException(422, "会话标题不能超过 200 个字符")
         context = self.context(payload.get("context") or {})
         def create():
-            existing = next((c for c in self.list(owner_id) if c.get("client_request_id") == key), None)
+            existing = next((c for c in self.store.list("conversation") if resource_owner(c) == owner_id and c.get("client_request_id") == key), None)
             if existing:
-                return existing
+                return self.require_owned(existing["id"], owner_id)
             return self.store.save("conversation", "conv_" + secrets.token_hex(16), {"owner_id": owner_id, "title": title.strip(), "context": context,
                     "messages": [], "active_run_id": None, "client_request_id": key})
         return self.store.atomic(create)

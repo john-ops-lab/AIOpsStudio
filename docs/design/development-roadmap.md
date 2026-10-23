@@ -2,6 +2,8 @@
 
 > 文档整合提示（2026-10-23）：本文件保留合并前的设计来源，文内引用随品牌更名更新。最新统一主文档为 [AIOpsStudio 完整设计](AIOpsStudio完整设计.md)，已实现/待验证/待开发状态及后续开发契约请以该文档和 OpenSpec 为准；本文件不再作为并行维护的最新设计。
 
+实施进度：M1（R01–R04、R07）已在独立Mac开发分支实现并完成限定回归，详见[最新完整设计](AIOpsStudio完整设计.md#23-m1-本分支实现与现有实例的区别)和[M1验证](../validation/2026-10-23-m1.md)。下文保留规划基线与阶段退出条件；清单未勾选不表示代码尚未开始，合并、真实业务和用户接受分别跟踪。
+
 规划基线：2026-10-23；本次修订将竞品研究缺口纳入原有工作包。总路线图：[Issue #1](https://github.com/john-ops-lab/AIOpsStudio/issues/1)；十三个实施 Issue 的实时状态以 GitHub 为准。本文件中的验收清单是交付条件，初始发布不表示已经完成。
 
 初次登记见[发布验证记录](../../openspec/changes/publish-development-roadmap/verification.md)；本次修订见[OpenSpec 记录](../../openspec/changes/align-roadmap-with-competitive-research/verification.md)及[增量设计](可信分析与协作增量设计-v0.1.md)。

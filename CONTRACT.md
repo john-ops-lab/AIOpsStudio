@@ -1,6 +1,22 @@
-# AIOpsStudio 首版实现协作合同
+# AIOpsStudio 实现协作合同
 
-## 当前变更：Chat 运维工作台与用户历史
+## 当前增量：M1 可信分析与数据边界
+
+本分支按 R01–R04、R07 的五个 OpenSpec change 实现，公开验证见 `docs/validation/2026-10-23-m1.md`。此节覆盖下方历史合同的同名行为；开发分支、合成通过、真实模型样本、业务接受和现有运行实例分别记录。
+
+- `analysis_context` 固定完整 canonical 五维对象、来源映射有效期、fault/baseline/change/validation 窗口、时钟偏差及版本化查询目录。身份未定先 `needs_input`，模型/源调用为零；服务端绑定身份与绝对时间，模型不能覆盖。`result_identity` 单独核对返回行/序列对象及全部范围维度；请求范围不冒充返回对象。无历史时间绑定的拓扑不视为故障时拓扑。
+- `PolicyService` 读取 `access_policy/main`、`egress_policy/main`。没有策略默认拒绝；frozen 与 latest 取约束交集，管理员无隐含源数据权限。每个连接实际 HTTP 派发及模型实际 SDK 请求复核；MCP 目录用 `$catalog` / `discovery`，告警列表/详情浏览用 `browse`，均需显式授权。实际目标精确绑定且拒绝重定向。
+- GET/PUT `/access-policies/source|egress` 仅管理员；GET 返回 `{configured,revision,policy?}`；PUT `{expected_revision,policy}`，策略 version 内容不可改写。普通用户的 Skill/模型仅返回已发布可用选择元数据；MCP 仅在有目录权限时返回选择元数据；settings 仅可选默认模型，versions/正文/连接配置不外泄。
+- 历史报告、继承历史、会话标题/消息、调用、片段、生成报告下载和订阅重新核对最新来源权限；未知来源旧派生材料拒绝。用户自传文件保持用户材料语义，不自动升级为源证据。
+- POST `/runs/{id}/material-reads` `{resource_type,selector,evidence_id?}`，或 `skill_reference` 加 `skill_id,version_id,path`。selector 支持 JSON Pointer、offset/limit、fields、series、绝对时间；不访问任意路径/URL。GET `/fragments/{anchor_id}` 重新授权、校验保存 SHA、重读原选择器并核对原数组坐标/投影字段。
+- 补读回执包含 `data,position,selector,anchor_id,material,saved_root,completeness,usage`。`position.source_indices/source_total_items/projection_fields` 区分筛选后的视图与原始位置。模型每次最多16KiB、16次/128KiB；人工16KiB、512次/8MiB，完整返回包计 UTF-8 字节，估算 token 不冒充 provider 用量；失败/重复均保留明确边界。
+- Skill 主体正文固定加载，reference 只提供固定版本清单，使用 `read_saved_material` 按需取内容；成功补读进入下一轮有界上下文。模型补读参数错误作为可纠正的安全工具错误反馈，策略拒绝仍停止，不绕过预算。
+- 报告保存 `grounding`、稳定 fact/claim 与 report_version。数值、单位、范围、对象、片段及冻结评估规则由程序核对；`verified` 只表示结构字段核对，模型措辞独立标未核验。拓扑潜在影响、观测异常、反证、未知、候选分开；不确认根因/恢复。
+- 出站类型逐字段投影；未知字段/类型、已知撤销前后凭据、未绑定参数均拒绝。会话别名映射仅服务端；实际 HTTP 验证组合提示对应最新策略 digest，不能以旧批准 hash 绕过收紧。HTTP transport 错误只保存固定公开文案，不把连接异常原文当业务证据。
+- 新模块：`analysis_context.py`、`access_policy.py`、`material_reading.py`、`grounded_reporting.py`、`runtime_trust.py`、`trust_api.py`、`evaluation/`。connector 的 `request_observer` 是同步、每次实际 HTTP 前的授权/计量回调；生产不得降级绕过。
+- 评估从固定旧代码运行真实 FastAPI/Deep Agents 入口，参考答案和 Agent 输入进程分离；保留首次失败、重试、未知分母及同冻结输入比较。R05 正式发布门禁、R06 完整流程/费用、R08/R09 生命周期/恢复、Case 与人工裁决继续后续工作包。
+
+## 历史基础：Chat 运维工作台与用户历史
 
 OpenSpec change：`chat-workbench-user-history`，规格与设计位于 `openspec/changes/chat-workbench-user-history/`。本节覆盖首版单用户相关描述。历史公开初始化见 `publish-public-repository`；当前公开副本及历史去标识化按已授权的 `sanitize-public-history` 执行。本文保留 API 契约，不包含现场配置或运行标识。
 

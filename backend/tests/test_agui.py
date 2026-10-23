@@ -1,9 +1,11 @@
 """The protocol adapter subscribes to existing durable work; it does not run agents."""
 import json
+import copy
 from types import SimpleNamespace
 import pytest
 
 from cryptography.fernet import Fernet
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from aiopsstudio.agui import configure_agui, protocol_binding_id
@@ -11,6 +13,7 @@ from aiopsstudio.main import create_app
 from aiopsstudio.store import Store
 from test_runtime import runtime
 from test_runtime_ownership import http_clients
+from m1_fixtures import analysis_defaults
 
 
 def setup(tmp_path):
@@ -24,7 +27,12 @@ def setup(tmp_path):
         return store.get('run',id)
     def detail(id, *, owner_id=None):
         return {**store.get('run',id), 'events':store.events(id)}
-    app.state.runtime=SimpleNamespace(detail=detail,cancel=cancel)
+    def require_owned(id, owner_id):
+        record=store.get('run',id)
+        if not record or (record.get('owner_id') or 'admin')!=owner_id:
+            raise HTTPException(404,'分析不存在')
+        return record
+    app.state.runtime=SimpleNamespace(detail=detail,cancel=cancel,require_owned=require_owned)
     configure_agui(app)
     client=TestClient(app,headers={'Origin':'http://testserver'})
     client.post('/api/login',json={'password':'adapter-test-password-only'}).raise_for_status()
@@ -89,10 +97,17 @@ def test_binding_scope_allows_same_protocol_identifier_for_another_owner(tmp_pat
 def chat_projection(tmp_path, runtime, monkeypatch):
     """Protocol fixtures finish synthetic work on projection; no model or worker runs."""
     app,store,users,(_,alice,_)=http_clients(tmp_path)
-    for kind in ('model','skill'):
+    for kind in ('model','skill','mcp'):
         for record in runtime.store.list(kind):
             store.save(kind,record['id'],record)
-    store.save('settings','main',{'default_model_id':'model_fixture','min_free_bytes':1,'artifact_dir':str(tmp_path/'artifacts')})
+    settings=runtime.store.get('settings','main')
+    settings['artifact_dir']=str(tmp_path/'artifacts')
+    for target in ('original-target','new-target'):
+        mapping=copy.deepcopy(settings['identity_mapping']['records'][0])
+        mapping['canonical']['id']=target
+        mapping['native_id']=target
+        settings['identity_mapping']['records'].append(mapping)
+    store.save('settings','main',settings)
     app.state.runtime.artifact_dir=tmp_path/'artifacts'
     configure_agui(app)
     original_detail=app.state.runtime.detail
@@ -107,7 +122,7 @@ def chat_projection(tmp_path, runtime, monkeypatch):
 
 def test_explicit_terminal_conversation_accepts_new_message_and_replays_once(tmp_path,runtime,monkeypatch):
     app,store,owner,client=chat_projection(tmp_path,runtime,monkeypatch)
-    conversation=client.post('/api/conversations',json={'client_request_id':'conv','context':{'skill_id':'skill_fixture'}}).json()
+    conversation=client.post('/api/conversations',json={'client_request_id':'conv','context':{**analysis_defaults(),'skill_id':'skill_fixture'}}).json()
     first=client.post('/api/conversations/'+conversation['id']+'/messages',json={'client_message_id':'first','content':'first question'}).json()['run']
     app.state.runtime._finish(first['id'],'partial',{'analysis':'original report','source':'platform_template'})
     body={'threadId':conversation['id'],'runId':'protocol-followup','messages':[{'id':'new-followup','role':'user','content':'check latency'}],
@@ -129,7 +144,7 @@ def test_explicit_terminal_conversation_accepts_new_message_and_replays_once(tmp
 @pytest.mark.parametrize('changed',[False,True])
 def test_active_conversation_protocol_message_is_saved_and_respects_context(tmp_path,runtime,monkeypatch,changed):
     app,store,owner,client=chat_projection(tmp_path,runtime,monkeypatch)
-    context={'skill_id':'skill_fixture','target':'original-target'}
+    context={**analysis_defaults(),'skill_id':'skill_fixture','target':'original-target'}
     conversation=client.post('/api/conversations',json={'client_request_id':'conv','context':context}).json()
     first=client.post('/api/conversations/'+conversation['id']+'/messages',json={'client_message_id':'first','content':'first question'}).json()['run']
     forwarded={'business_run_id':first['id'],**({'target':'new-target'} if changed else {})}
@@ -146,7 +161,7 @@ def test_active_conversation_protocol_message_is_saved_and_respects_context(tmp_
 
 def test_explicit_terminal_legacy_message_retries_once_by_message_id(tmp_path,runtime,monkeypatch):
     app,store,owner,client=chat_projection(tmp_path,runtime,monkeypatch)
-    first=client.post('/api/runs',json={'skill_id':'skill_fixture','message':'first legacy question','client_request_id':'legacy-first'}).json()
+    first=client.post('/api/runs',json={**analysis_defaults(),'skill_id':'skill_fixture','message':'first legacy question','client_request_id':'legacy-first'}).json()
     app.state.runtime._finish(first['id'],'partial',{'analysis':'original legacy report','source':'platform_template'})
     body={'threadId':first['thread_id'],'runId':'legacy-followup','messages':[{'id':'legacy-followup-id','role':'user','content':'continue legacy analysis'}],
           'forwardedProps':{'business_run_id':first['id']}}

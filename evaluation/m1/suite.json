@@ -1,0 +1,161 @@
+{
+  "schema": "aiopsstudio-evaluation-suite/1",
+  "scorer_version": "analysis-evaluation/1",
+  "baseline_ref": "bd9a949cff85e2f5b00b5dfd43d323909bfd0a1f",
+  "frozen": {
+    "path": "frozen.json",
+    "sha256": "9a17a1d6e49d6b1a9a25cc0746468fed1d1851ca8c325b88ffba14a219551b50"
+  },
+  "cases": [
+    {
+      "id": "normal-alert",
+      "input": "inputs/normal-alert.json",
+      "input_sha256": "6121d4eecf12f184654dfe4eaea4ac2e84e2d048782acdc8bcca09d95c00528d",
+      "oracle": "oracles/normal-alert.json",
+      "oracle_sha256": "b6eef118fa9571e20f59bdc190b66b10cbfedec3ea5d3d98acc9421f2bacbcdc"
+    },
+    {
+      "id": "missing-data",
+      "input": "inputs/missing-data.json",
+      "input_sha256": "74129db88702dec27c2b24dfb0807cca0e44d62a1d1318a57f0bdf9c69ea690b",
+      "oracle": "oracles/missing-data.json",
+      "oracle_sha256": "a05c2e40ce7f8d78d289ae3095bdcc32dbd78357039dad510716172506749025"
+    },
+    {
+      "id": "stale-data",
+      "input": "inputs/stale-data.json",
+      "input_sha256": "d728a06b77a690d3607cfa735357361336ec19dda2ad5df8ff2108f09f43dd5c",
+      "oracle": "oracles/stale-data.json",
+      "oracle_sha256": "a1adff8a9e30a95f201efb1eb42a176c512ec3de617c9f2a50ee1239899910b1"
+    },
+    {
+      "id": "second-series-tail",
+      "input": "inputs/second-series-tail.json",
+      "input_sha256": "bb52d6496eadb4f68402f5e24b51a9934b62ab5598270869ce93be5129019ceb",
+      "oracle": "oracles/second-series-tail.json",
+      "oracle_sha256": "4ff5eef3d9da9aaf0343fe2d97f1043c8a998dc2215059c5b9833f8534d8d118"
+    },
+    {
+      "id": "raw-tail-fragment",
+      "input": "inputs/raw-tail-fragment.json",
+      "input_sha256": "b1bda940d25c55f37a856bbdf4560d10947854712feaf3a9e4ebb66142c317b1",
+      "oracle": "oracles/raw-tail-fragment.json",
+      "oracle_sha256": "af672ebed154efa314c67f268f0c2dec60f672840d7ed7e6f891fdf4f4a4b307"
+    },
+    {
+      "id": "paginated-source",
+      "input": "inputs/paginated-source.json",
+      "input_sha256": "37aab40a5acd7f86f469fc8fe32a7a741952f9f258cc9a4bba51be5133c37446",
+      "oracle": "oracles/paginated-source.json",
+      "oracle_sha256": "4bf4c28238eabdddf4f1bbe6f2f005219b5a80cdcdfdc15dc0f9b38d659b87f0"
+    },
+    {
+      "id": "identity-ambiguous",
+      "input": "inputs/identity-ambiguous.json",
+      "input_sha256": "55997c7903f5fe33b1b54d7efab403f8b7a476152f225d5944e27c945a9443e1",
+      "oracle": "oracles/identity-ambiguous.json",
+      "oracle_sha256": "46d6c23d9a358b34874d93cd03b5ab6bcd273e290ccdb132fb9b3fb01a6328fc"
+    },
+    {
+      "id": "source-interface-failure",
+      "input": "inputs/source-interface-failure.json",
+      "input_sha256": "2c95c39e3ed62d29ece54bf34cae2ccd72f147a3d1a5ae2c5b9f13b000b9fd4c",
+      "oracle": "oracles/source-interface-failure.json",
+      "oracle_sha256": "385048eeeab47821af93776de94a64b06b3c6af808189b0eef219ea47bab54ea"
+    },
+    {
+      "id": "model-interface-failure",
+      "input": "inputs/model-interface-failure.json",
+      "input_sha256": "ffa02b5205205b0b1b039008d5c8a82f051c3f9767c3c693b646baa4481e17e0",
+      "oracle": "oracles/model-interface-failure.json",
+      "oracle_sha256": "5eb1232584899ddfe0e77ab7fbd314cf94a37ed951e2607dab95b6bdd7eabbf7"
+    },
+    {
+      "id": "irrelevant-evidence",
+      "input": "inputs/irrelevant-evidence.json",
+      "input_sha256": "8b10dc3b9c27b63c2019fd85a3ecfbd7df6c6ced91937fe9f975ac245fe63281",
+      "oracle": "oracles/irrelevant-evidence.json",
+      "oracle_sha256": "da03a1d666917fe0a9697fabd64e8f7aad8b15d8db2bf3f8cc2feb68caf39b80"
+    },
+    {
+      "id": "model-egress-boundary",
+      "input": "inputs/model-egress-boundary.json",
+      "input_sha256": "c6035d3a137673c5e226410aeb5df38259636d4525dd0e108d65f111b50b0328",
+      "oracle": "oracles/model-egress-boundary.json",
+      "oracle_sha256": "c5855e816e6542af8afad7283a58881dd03dfb0818c3433d928099bfc7a114d2"
+    },
+    {
+      "id": "sharing-revocation",
+      "input": "inputs/sharing-revocation.json",
+      "input_sha256": "e08d40fac4cb38f50d8f68f30adbcfdf45b53f5c3cbada0a94b7f675cee296d0",
+      "oracle": "oracles/sharing-revocation.json",
+      "oracle_sha256": "c9a6b07b0704ff2269951ba15b046b5c85df49aad6339444452477fb11a58580"
+    },
+    {
+      "id": "human-verdict",
+      "input": "inputs/human-verdict.json",
+      "input_sha256": "08a579a31820aace055af93cb632b52264f2ee85021bae1a539d443dad9bb5d4",
+      "oracle": "oracles/human-verdict.json",
+      "oracle_sha256": "b35f68e2348ac6eef54c6182f5c35199bc684fd1e60d3123a6ece0601341b3d2"
+    },
+    {
+      "id": "references-on-demand",
+      "input": "inputs/references-on-demand.json",
+      "input_sha256": "6171086019ff5e85c07799f9975ce36f50bd53bc26c5bd9b9c8481819f884673",
+      "oracle": "oracles/references-on-demand.json",
+      "oracle_sha256": "74999ed1c61b379bfcc3b93b1ac406134607bad424d1553db7461417f72d6ea5"
+    },
+    {
+      "id": "consistent-recovery",
+      "input": "inputs/consistent-recovery.json",
+      "input_sha256": "782cc15362e0bdb11b48d4411ea3e9923b030264abcaa03028c5e570fbc84cfe",
+      "oracle": "oracles/consistent-recovery.json",
+      "oracle_sha256": "c6bbc5ca128ab3bbaa85e8c761c72e13017a41c47a0564136df7942adc14e28f"
+    },
+    {
+      "id": "mapping-unresolved",
+      "input": "inputs/mapping-unresolved.json",
+      "input_sha256": "10e0beb08f420f76e2ef091b676b2d5141bac90a63fe99f9c947cbe9a65f2662",
+      "oracle": "oracles/mapping-unresolved.json",
+      "oracle_sha256": "0759ffbab671c0f8de0eb5c292330c347bf56f648cd44758700591ad6ceaac67"
+    },
+    {
+      "id": "mapping-ambiguous",
+      "input": "inputs/mapping-ambiguous.json",
+      "input_sha256": "9442ce2f7c06b8a8a4d18fe0230e8d29aa85077842f7ebfb5d58e1ab40b123c8",
+      "oracle": "oracles/mapping-ambiguous.json",
+      "oracle_sha256": "811cd0749b67640f8818f17e8b7d8af528da91e3c278dace5afd6905ce95d2dc"
+    },
+    {
+      "id": "requested-skill-reference",
+      "input": "inputs/requested-skill-reference.json",
+      "input_sha256": "9651e663847f50c8c4f9d312bb92030832a5e3a748a6319008079da101ef456f",
+      "oracle": "oracles/requested-skill-reference.json",
+      "oracle_sha256": "8416bbbbe9a36b8295c2f3dcc155fc5827605af957fa6b15a8a1a04f3a0a4b8a"
+    }
+  ],
+  "visibility": "only inputs/frozen enter execution child; oracles loaded after replay",
+  "minimum_categories": [
+    "normal",
+    "missing",
+    "stale",
+    "multi_series_tail",
+    "raw_tail",
+    "pagination",
+    "identity_ambiguity",
+    "source_failure",
+    "model_failure",
+    "irrelevant_evidence",
+    "egress",
+    "sharing_revocation",
+    "human_verdict",
+    "references",
+    "recovery",
+    "mapping-unresolved",
+    "mapping-ambiguous",
+    "requested_reference"
+  ],
+  "scorer_sha256": "c2e28b3dcd25f02640e47484719cd227458044ba4e6af239e039e8095321b02b",
+  "suite_version": "M1-trusted-synthetic/1",
+  "measurement_adapter": "synthetic-wire-extractor-v2, real ChatOpenAI SDK with offline MockTransport, actual request hooks retained"
+}

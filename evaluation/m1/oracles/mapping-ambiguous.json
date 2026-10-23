@@ -1,0 +1,55 @@
+{
+  "schema": "aiopsstudio-evaluation-oracle/1",
+  "id": "mapping-ambiguous",
+  "visibility": "scorer_only_after_execution",
+  "rationale": "映射先于模型/源派发；独立核对真实run状态、请求计数和缺口。",
+  "assertions": [
+    {
+      "id": "frozen_versions_match",
+      "dimension": "boundaries",
+      "path": "frozen_validation.matched",
+      "operator": "equals",
+      "value": true,
+      "critical": true,
+      "failure_class": "harness_error"
+    },
+    {
+      "id": "identity_blocks_execution",
+      "dimension": "coverage",
+      "path": "run.status",
+      "operator": "equals",
+      "value": "needs_input",
+      "critical": true,
+      "failure_class": "coverage_overclaim"
+    },
+    {
+      "id": "no_model_dispatch",
+      "dimension": "boundaries",
+      "path": "model_requests",
+      "operator": "equals",
+      "value": [],
+      "critical": true,
+      "failure_class": "authorization_violation"
+    },
+    {
+      "id": "no_source_dispatch",
+      "dimension": "boundaries",
+      "path": "source_requests",
+      "operator": "equals",
+      "value": [],
+      "critical": true,
+      "failure_class": "authorization_violation"
+    },
+    {
+      "id": "specific_identity_issue",
+      "dimension": "coverage",
+      "path": "run.analysis_context.issues",
+      "operator": "any_match",
+      "value": {
+        "code": "identity_ambiguous"
+      },
+      "critical": true,
+      "failure_class": "coverage_overclaim"
+    }
+  ]
+}

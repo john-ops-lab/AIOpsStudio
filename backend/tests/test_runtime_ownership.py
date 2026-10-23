@@ -1,5 +1,6 @@
 """Synthetic ownership and continuous-round regressions; no online source calls."""
 import copy
+import hashlib
 from types import SimpleNamespace
 import json
 
@@ -13,6 +14,7 @@ from aiopsstudio.agui import configure_agui, protocol_binding_id
 from aiopsstudio.runtime import resource_owner, stream_authorized
 from aiopsstudio.store import Store
 from test_runtime import runtime, tool_payload
+from m1_fixtures import seed_policies
 
 
 @pytest.mark.asyncio
@@ -56,7 +58,9 @@ async def test_foreign_links_and_mutations_do_not_reveal_or_modify_a_run(runtime
 async def test_followup_retains_old_round_and_builds_bounded_trusted_history(runtime):
     runtime.store.save("conversation", "conversation-a", {"owner_id": "user-a", "messages": []})
     first = await runtime.submit({**tool_payload("round-1"), "conversation_id": "conversation-a", "thread_id": "conversation-a", "message": "first question"}, owner_id="user-a")
-    old_evidence = {"id": "ev_" + "a" * 32, "status": "saved", "tool_name": "read_fixture"}
+    old_evidence = {"id": "ev_" + "a" * 32, "owner_id": "user-a", "status": "saved", "tool_name": "read_fixture",
+        "access_scopes": [runtime.policies.authorize_source(subject_id="user-a", source_id="server_fixture", tool_name="read_fixture",
+            config=first["config_snapshot"]["mcps"][0], arguments={}, purpose="tool_test", snapshot=first["policy_snapshot"])]}
     runtime._update(first["id"], {"evidence": [old_evidence], "status": "partial", "report": {"analysis": "old report " + "x" * 10000}})
     original = copy.deepcopy(runtime.store.get("run", first["id"]))
     second = await runtime.retry(first["id"], {"client_request_id": "round-2", "message": "check latency", "owner_id": "user-b",
@@ -71,7 +75,9 @@ async def test_followup_retains_old_round_and_builds_bounded_trusted_history(run
     assert len(history["rounds"][0]["report_summary"]) == 1600
     assert "forged" not in str(history) and raw["user_materials"] == []
     assert "history_context" not in second and "user_materials" not in second
-    context = runtime._investigation_context(raw)
+    # This tool-test has no model; verify persisted history without manufacturing
+    # an investigation/model view or bypassing its separate egress policy.
+    context = runtime._raw_investigation_context(raw)
     assert context["history_context"] == history and context["evidence_ledger"]["evidence"] == []
     assert runtime.store.get("run", first["id"]) == original
 
@@ -97,7 +103,7 @@ async def test_live_materials_are_validated_frozen_and_not_duplicated(runtime):
     assert len(current["messages"]) == 1 and len(current["user_materials"]) == 2
     assert current["attachment_ids"] == ["text-1", "text-2"]
     assert "forged material" not in str(current["user_materials"])
-    assert runtime._investigation_context(current)["user_materials"] == current["user_materials"]
+    assert runtime._raw_investigation_context(current)["user_materials"] == current["user_materials"]
     before = copy.deepcopy(current)
     with pytest.raises(HTTPException) as error:
         await runtime.message(first["id"], {**message, "client_message_id": "foreign", "attachment_ids": ["foreign"]}, owner_id="user-a")
@@ -139,6 +145,9 @@ def http_clients(tmp_path):
     app = create_app(store=store, testing=True, master_key=Fernet.generate_key(), password="synthetic-admin-password",
                      public_origin="http://testserver", artifact_dir=tmp_path / "artifacts")
     users = [app.state.identity.create({"username": name, "password": "synthetic-user-password"}) for name in ("alice", "bob")]
+    seed_policies(store, subjects=["admin", *(user["id"] for user in users)],
+        model={"id": "history-fixture-model", "secret_id": app.state.vault.put("history-fixture-synthetic-key"), "base_url": "http://127.0.0.1:1/v1"},
+        server={"id": "server_fixture", "url": "http://127.0.0.1:1/mcp"})
     clients = []
     for username, password in (("admin", "synthetic-admin-password"), ("alice", "synthetic-user-password"), ("bob", "synthetic-user-password")):
         client = TestClient(app, headers={"Origin": "http://testserver"})
@@ -151,18 +160,28 @@ def test_http_lists_streams_evidence_and_mutations_use_parent_run_ownership(tmp_
     app, store, users, (admin, alice, bob) = http_clients(tmp_path)
     owner = users[0]["id"]
     base = {"created_at": "2026-10-22T00:00:00+00:00", "status": "partial", "messages": [], "evidence": [], "report": {"summary": "private report"}}
-    store.save("run", "alice-run", {**base, "owner_id": owner, "thread_id": "alice-thread", "target": "private target"})
+    store.save("run", "alice-run", {**base, "trust_version": "trusted-runtime/1", "owner_id": owner, "thread_id": "alice-thread", "target": "private target"})
     original = store.get("run", "alice-run")
-    store.save("run", "legacy-admin", {**base, "thread_id": "legacy-thread"})
+    # Legacy ownership applies to metadata; unknown-origin derived content is
+    # deliberately tested as refused below rather than silently trusted.
+    store.save("run", "legacy-admin", {**base, "report": None, "thread_id": "legacy-thread"})
     store.save("invocation", "invoke-alice", {"run_id": "alice-run", "arguments": {"private": "query"}})
     store.save("invocation", "invoke-admin", {"run_id": "legacy-admin"})
-    path = tmp_path / "private-evidence.json"
+    folder = tmp_path / "artifacts" / "evidence" / "alice-run"
+    folder.mkdir(parents=True)
+    path = folder / "private-evidence.json"
     path.write_text(json.dumps({"private": "source result"}))
-    # Even a wrong owner field on the evidence cannot bypass its authoritative parent.
-    store.save("evidence", "ev-private", {"run_id": "alice-run", "owner_id": users[1]["id"], "path": str(path)})
+    scope = app.state.policy.authorize_source(subject_id=owner, source_id="server_fixture", tool_name="read_fixture",
+        config={"url": "http://127.0.0.1:1/mcp"}, arguments={}, purpose="investigation")
+    evidence = {"run_id": "alice-run", "owner_id": users[1]["id"], "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "access_scopes": [scope]}
+    store.save("evidence", "ev-private", evidence)
     assert [r["id"] for r in alice.get("/api/runs").json()["items"]] == ["alice-run"]
     assert bob.get("/api/runs").json()["items"] == []
     assert [r["id"] for r in admin.get("/api/runs").json()["items"]] == ["legacy-admin"]
+    # Both the authoritative parent and evidence metadata must agree; malformed
+    # owner metadata is rejected rather than treating it as a new owner's grant.
+    assert alice.get("/api/evidence/ev-private").status_code == 404
+    store.save("evidence", "ev-private", {**evidence, "owner_id": owner})
     assert alice.get("/api/evidence/ev-private").json()["response"] == {"private": "source result"}
     for client in (admin, bob):
         assert [i["id"] for i in client.get("/api/invocations").json()["items"]] == ([] if client is bob else ["invoke-admin"])
@@ -207,9 +226,10 @@ def test_finish_maps_consumed_and_late_messages_and_keeps_one_report(tmp_path):
     owner = users[0]["id"]
     service = app.state.conversations
     conversation = service.create(owner, {"client_request_id": "finish-mapping"})
+    store.save("run", "mapping-run", {"trust_version": "trusted-runtime/1", "owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"], "status": "running", "evidence": [], "messages": []})
     first = service.append_message(conversation["id"], owner, "user", "original question", "first-client", run_id="mapping-run", status="accepted")
     late = service.append_message(conversation["id"], owner, "user", "late clarification", "late-client", run_id="mapping-run", status="accepted")
-    store.save("run", "mapping-run", {"owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"],
+    store.save("run", "mapping-run", {"trust_version": "trusted-runtime/1", "owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"],
         "status": "running", "evidence": [], "messages": [
             {"id": "runtime-first", "client_message_id": first["id"], "role": "user", "content": first["content"], "status": "processed"},
             {"id": "runtime-late", "client_message_id": late["id"], "role": "user", "content": late["content"], "status": "pending"}]})
@@ -234,7 +254,7 @@ async def test_queued_cancel_finishes_conversation_once_without_model_claim(tmp_
     service = app.state.conversations
     conversation = service.create(owner, {"client_request_id": "queued-cancel"})
     question = service.append_message(conversation["id"], owner, "user", "cancel before start", "cancel-client", run_id="cancel-run", status="accepted")
-    store.save("run", "cancel-run", {"owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"],
+    store.save("run", "cancel-run", {"trust_version": "trusted-runtime/1", "owner_id": owner, "conversation_id": conversation["id"], "thread_id": conversation["id"],
         "status": "queued", "evidence": [], "messages": [{"id": "runtime-cancel", "client_message_id": question["id"], "role": "user", "content": question["content"], "status": "pending"}]})
     first = await app.state.runtime.cancel("cancel-run", owner_id=owner)
     second = await app.state.runtime.cancel("cancel-run", owner_id=owner)
@@ -251,7 +271,7 @@ def test_real_agui_projection_binds_protocol_ids_with_authenticated_owner(tmp_pa
     app, store, users, (admin, alice, bob) = http_clients(tmp_path)
     configure_agui(app)
     for index, name in enumerate(("alice", "bob")):
-        store.save("run", name + "-run", {"owner_id": users[index]["id"], "thread_id": name + "-thread",
+        store.save("run", name + "-run", {"trust_version": "trusted-runtime/1", "owner_id": users[index]["id"], "thread_id": name + "-thread",
             "status": "partial", "created_at": "2026-10-22T00:00:00+00:00", "evidence": [],
             "messages": [{"id": name + "-message", "role": "assistant", "content": name + " private answer"}]})
     for client, name, user in ((alice, "alice", users[0]), (bob, "bob", users[1])):
@@ -266,3 +286,12 @@ def test_real_agui_projection_binds_protocol_ids_with_authenticated_owner(tmp_pa
         assert client.post("/api/ag-ui/stop/alice-thread", json={"runId": "same-protocol"}).status_code == 404
     assert len(store.list("agui_binding")) == 2
     assert not store.get("run", "alice-run").get("cancel_requested")
+
+
+def test_unknown_legacy_derived_history_is_not_upgraded_to_trusted(tmp_path):
+    app, store, users, (admin, alice, bob) = http_clients(tmp_path)
+    store.save("run", "unknown-legacy-derived", {"thread_id": "unknown-thread", "status": "partial", "evidence": [],
+        "messages": [], "report": {"analysis": "unknown-source-sensitive-history"}})
+    response = admin.get("/api/runs/unknown-legacy-derived")
+    assert response.status_code == 404 and "unknown-source-sensitive-history" not in response.text
+    assert admin.get("/api/runs").json()["items"] == []

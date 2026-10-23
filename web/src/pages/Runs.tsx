@@ -25,6 +25,7 @@ import { reportMetadataTitles, reportSummary } from "../components/reportPresent
 import {
   Button,
   Empty,
+  Field,
   JsonView,
   Loading,
   Metadata,
@@ -41,6 +42,38 @@ function readable(value: unknown): string {
     return v.text || v.content || v.message || json(value);
   }
   return String(value);
+}
+const coverageNames: Record<string, string> = { complete: "声明范围已覆盖", empty: "查询成功，结果为空", forbidden: "无读取权限", failed: "查询失败", stale: "数据陈旧", partial: "仅部分覆盖", historical_unsupported: "源不支持该历史范围", unknown: "覆盖未知" };
+const coverageReasons: Record<string, string> = { out_of_window: "结果超出固定窗口", pagination_incomplete: "分页未读完", truncated: "保存或阅读存在截断", stale: "数据陈旧", historical_unsupported: "源明确不支持历史", historical_unknown: "历史能力未知", scope_unverified: "对象范围未核验", source_clock_unknown: "源时钟偏差未知" };
+export function Coverage({ value }: { value?: Entity }) {
+  const status = value?.status || "unknown";
+  return <div className="coverage-summary"><Status value={status}>{coverageNames[status] || "覆盖未知"}</Status>{value?.reasons?.length ? <span>{value.reasons.map((reason: string) => coverageReasons[reason] || reason).join("；")}</span> : null}{value?.declared_window ? <small>声明窗口：{dateTime(value.declared_window.start)} — {dateTime(value.declared_window.end)}</small> : null}</div>;
+}
+export function AnalysisContextPanel({ value }: { value?: Entity }) {
+  const verified = value?.version && value.status === "ready";
+  const identity = value?.identity?.canonical;
+  return <details className="analysis-context-panel" open={value?.status === "needs_input"}>
+    <summary>对象与时间范围 <Status value={verified ? "checked" : value?.status === "needs_input" ? "needs_input" : "unknown"}>{verified ? "已固定" : value?.status === "needs_input" ? "需要补充" : "历史上下文未核验"}</Status></summary>
+    {identity ? <Metadata items={[["环境", identity.environment], ["集群", identity.cluster || "不适用"], ["Namespace", identity.namespace || "不适用"], ["对象类型", identity.type], ["对象 ID", identity.id]]} /> : <p className="scope-note">{value?.version ? "身份尚未唯一确定，补齐范围和来源映射后新建尝试。" : "此记录没有版本化身份、窗口与覆盖契约，不能追认为完整分析。"}</p>}
+    {value?.issues?.length ? <ul className="context-issues">{value.issues.map((item: Entity, i: number) => <li key={item.code || i}>{item.detail || item.message || item.code}</li>)}</ul> : null}
+    {value?.windows ? <dl className="context-windows">{Object.entries(value.windows).map(([name, data]) => { const window = data as Entity; return <div key={name}><dt>{{ fault: "故障窗口", baseline: "对照窗口", change: "变更窗口", validation: "验证窗口" }[name] || name}</dt><dd>{dateTime(window.start)} — {dateTime(window.end)}{name === "baseline" ? <small>流量与健康可比性：{window.comparability === "verified" ? "已核验" : "未知"}</small> : null}</dd></div>; })}</dl> : null}
+    {value?.version ? <JsonView title="身份映射、查询目录与时钟偏差版本" value={{ identity_mapping_version: value.identity_mapping_version, query_catalog_version: value.query_catalog_version, source_offsets: value.source_offsets, mappings: value.identity?.mappings }} /> : null}
+  </details>;
+}
+function GroundedReport({ value, onEvidence }: { value: Entity; onEvidence?: (id: string) => void }) {
+  const groups: [string, string][] = [["facts", "保存材料的确定性计算"], ["claims", "结构化结论核对"], ["potential_impacts", "登记关系上的潜在风险"], ["observed_anomalies", "遥测实测异常"], ["counterevidence", "反证与冲突"], ["unknowns", "未查询与无法判断"], ["candidates", "待核验候选"]];
+  return <section className="grounded-report" aria-label="结构化证据核验报告">{groups.map(([key, label]) => {
+    const rows = Array.isArray(value[key]) ? value[key] : value[key] ? [value[key]] : [];
+    return <section key={key}><h3>{label}</h3>{rows.length ? <ol>{rows.map((row: Entity | string, i: number) => {
+      const item: Entity = row && typeof row === "object" ? row : { text: readable(row) };
+      const tuple = item.rule && item.pointer !== undefined && "value" in item ? `${item.rule}(${item.pointer}) = ${readable(item.value)}${item.unit ? ` ${item.unit}` : ""}` : "结构化字段不足，参见核验明细。";
+      const mainText = key === "claims" ? item.verification_scope === "structured_fields_only" ? item.text || tuple : tuple : (item.text || item.statement || item.description || item.detail || item.claim) ?? item.value ?? item;
+      const modelText = item.model_text || (key === "claims" && item.verification_scope !== "structured_fields_only" ? item.text : "");
+      const verificationName = ({ verified: "仅结构字段核对通过", unverified: "未通过核对", potential_only: "仅潜在关系", unresolved: "尚待核验", observed_in_declared_scope: "仅声明范围内观察", normal_under_frozen_rule_only: "仅固定规则下的对照", observed_pattern_only: "仅记录观察模式" } as Record<string, string>)[item.status] || "范围或语义尚未核验";
+      const refs: Entity[] = [...(Array.isArray(item.anchors) ? item.anchors : []), ...(Array.isArray(item.evidence_refs) ? item.evidence_refs : []), ...(Array.isArray(item.evidence_ids) ? item.evidence_ids.map((id: string) => ({ evidence_id: id })) : []), ...(item.evidence_id ? [{ evidence_id: item.evidence_id, anchor_id: item.anchor_id }] : [])];
+      return <li key={item.id || i}><Markdown text={readable(mainText)} onEvidence={onEvidence} />{key === "facts" ? <p className="muted tiny">返回对象身份：{item.verification?.object === "verified" ? "已按冻结映射核验" : "未知，不能仅按查询目标归属"}</p> : null}{item.status ? <p><Status value={item.status}>{verificationName}</Status></p> : null}{modelText ? <details className="model-draft"><summary>模型表述（未核验，不随数值核对自动成立）</summary><Markdown text={readable(modelText)} onEvidence={onEvidence} /></details> : null}{item.limitations?.length || item.reasons?.length ? <p className="scope-note">本项仍有核验限制，见下方来源与范围明细。</p> : null}{refs.length ? <div className="fragment-references">{refs.map((ref: Entity | string, index: number) => { const evidenceId = typeof ref === "string" ? ref.split("#")[0] : ref?.evidence_id; const anchor = typeof ref === "string" ? ref.split("#")[1] : ref?.anchor_id || ref?.fragment_id; return evidenceId ? <button type="button" className="text-link" key={`${evidenceId}-${anchor || index}`} onClick={() => onEvidence?.(`${evidenceId}${anchor ? `#${anchor}` : ""}`)}>查看{anchor ? "精确片段" : "证据"} {index + 1}</button> : null; })}</div> : null}{typeof row === "object" ? <JsonView value={item} title="计算规则、单位与来源明细" /> : null}</li>;
+    })}</ol> : <p className="muted">本轮未记录此项，不能据此断言不存在。</p>}</section>;
+  })}</section>;
 }
 export function Report({
   report,
@@ -60,10 +93,10 @@ export function Report({
       />
     );
   if (typeof report === "string")
-    return <Markdown text={report} onEvidence={onEvidence} />;
+    return <><p className="scope-note">历史报告原文，未通过当前结构化事实核验。</p><Markdown text={report} onEvidence={onEvidence} /></>;
   const r = report as Entity;
   const analysis = readable(r.analysis);
-  const summary = analysis ? "" : reportSummary(readable(r.summary));
+  const summary = analysis || r.grounding ? "" : reportSummary(readable(r.summary));
   const known = new Set([
     "summary",
     "analysis",
@@ -73,19 +106,23 @@ export function Report({
     "evidence_ids",
     "limitations",
     "recommendations",
+    "grounding", "report_version", "model_analysis", "model_draft",
   ]);
   return (
     <div className="report">
       <h3>{title}</h3>
+      {r.report_version ? <p className="muted tiny">报告版本 {r.report_version}</p> : null}
+      {r.grounding ? <GroundedReport value={r.grounding} onEvidence={onEvidence} /> : null}
       {summary ? (
         <div className="summary-callout">
           <ShieldCheck size={21} />
           <Markdown text={readable(summary)} onEvidence={onEvidence} />
         </div>
       ) : null}
-      {analysis ? <Markdown text={analysis} onEvidence={onEvidence} /> : null}
+      {analysis ? r.grounding ? <details className="model-draft"><summary>模型原文（未经逐项核验，不作为已确认事实）</summary><Markdown text={analysis} onEvidence={onEvidence} /></details> : <><p className="scope-note">以下为历史报告或模型原文，未通过当前结构化事实核验。</p><Markdown text={analysis} onEvidence={onEvidence} /></> : null}
+      {r.model_analysis || r.model_draft ? <details className="model-draft"><summary>模型草稿（未经核验）</summary><Markdown text={readable(r.model_analysis || r.model_draft)} onEvidence={onEvidence} /></details> : null}
       {r.facts ? (
-        <JsonView value={r.facts} title="报告事实与证据元数据" />
+        <JsonView value={r.facts} title={r.grounding ? "事实核验元数据" : "历史报告记录（未按当前契约核验）"} />
       ) : null}
       {r.recommendations ? (
         <>
@@ -128,10 +165,27 @@ export function EvidenceModal({
   id: string;
   onClose: () => void;
 }) {
-  const resource = useResource(`/evidence/${encodeURIComponent(id)}`);
+  const [evidenceId, anchorId] = id.split("#", 2);
+  const resource = useResource(`/evidence/${encodeURIComponent(evidenceId)}`);
+  const anchor = useResource(anchorId ? `/fragments/${encodeURIComponent(anchorId)}` : null);
+  const action = useAction();
+  const [pointer, setPointer] = useState(""), [offset, setOffset] = useState(0), [limit, setLimit] = useState(100), [series, setSeries] = useState(""), [fields, setFields] = useState(""), [start, setStart] = useState(""), [end, setEnd] = useState(""), [timeField, setTimeField] = useState("");
+  const [fragment, setFragment] = useState<Entity | null>(null);
+  const currentId = useRef(id); currentId.current = id;
+  useEffect(() => { setFragment(null); setPointer(""); setOffset(0); setLimit(100); setSeries(""); setFields(""); setStart(""); setEnd(""); setTimeField(""); action.setError(""); }, [id]);
+  const selectedFragment = fragment || anchor.data;
+  async function read(next = 0, savedSelector?: Entity) {
+    await action.act("read", async () => {
+      if (!resource.data?.run_id) throw new Error("此证据没有关联分析轮次，暂不能定向读取。");
+      if (Boolean(start) !== Boolean(end)) throw new Error("片段时间筛选须同时填写开始与结束。");
+      const selector = savedSelector ? { ...savedSelector, offset: next } : { pointer, offset: next, limit, ...(series !== "" ? { series: Number(series) } : {}), ...(fields.trim() ? { fields: fields.split(",").map((item) => item.trim()).filter(Boolean) } : {}), ...(start && end ? { time_start: new Date(start).toISOString(), time_end: new Date(end).toISOString(), ...(timeField ? { time_field: timeField } : {}) } : {}) };
+      const result = await post(`/runs/${encodeURIComponent(resource.data.run_id)}/material-reads`, { resource_type: "evidence", evidence_id: evidenceId, selector });
+      if (currentId.current === id) { setFragment(result); setOffset(next); }
+    });
+  }
   return (
     <Modal title="证据详情" onClose={onClose} wide>
-      <Notice error={resource.error} />
+      <Notice error={resource.error || action.error || (!fragment ? anchor.error : "")} />
       {resource.loading ? <Loading /> : null}
       {resource.data ? (
         <>
@@ -140,6 +194,19 @@ export function EvidenceModal({
               .filter(([k]) => !["response", "raw", "content"].includes(k))
               .slice(0, 12)}
           />
+          <Coverage value={resource.data.coverage} />
+          <details className="material-reader" open={Boolean(anchorId)}><summary>定向读取已保存证据</summary><p className="muted">仅重读本轮已保存材料，不重新查询源；保存时已截断的部分不能在此恢复。</p><form className="stack" onSubmit={(event) => { event.preventDefault(); void read(offset); }}><div className="form-grid">
+            <Field label="JSON Pointer" hint="空值读取根；例如 /structuredContent/data"><input value={pointer} onChange={(event) => setPointer(event.target.value)} placeholder="/structuredContent/data" /></Field>
+            <Field label="起始位置"><input type="number" min={0} step={1} value={offset} onChange={(event) => setOffset(Number(event.target.value))} /></Field>
+            <Field label="每页数量"><input type="number" min={1} max={200} step={1} value={limit} onChange={(event) => setLimit(Number(event.target.value))} /></Field>
+            <Field label="序列下标（可选）"><input type="number" min={0} step={1} value={series} onChange={(event) => setSeries(event.target.value)} /></Field>
+            <Field label="字段（可选，英文逗号分隔）"><input value={fields} onChange={(event) => setFields(event.target.value)} /></Field>
+            <Field label="片段开始时间（可选）"><input type="datetime-local" step={1} value={start} onChange={(event) => setStart(event.target.value)} /></Field>
+            <Field label="片段结束时间（可选）"><input type="datetime-local" step={1} value={end} onChange={(event) => setEnd(event.target.value)} /></Field>
+            <Field label="行时间字段（JSON Pointer，可选）" hint="填写完整时间筛选时使用；默认 /0，表示行数组第一个值。"><input value={timeField} onChange={(event) => setTimeField(event.target.value)} placeholder="/timestamp" /></Field>
+          </div><div className="form-actions"><Button type="submit" busy={!!action.busy} disabled={!resource.data.run_id}>读取片段</Button></div></form></details>
+          {anchorId && anchor.loading && !fragment ? <Loading /> : null}
+          {selectedFragment ? <section className="fragment-result"><h3>已保存片段</h3><p className="fragment-anchor">精确引用：<code>{evidenceId}#{selectedFragment.anchor_id || anchorId}</code></p><JsonView value={selectedFragment.position} title="片段位置" open /><JsonView value={selectedFragment.completeness} title="来源、保存与阅读完整性" open /><JsonView value={selectedFragment.data} title="本页片段" open /><JsonView value={selectedFragment.usage} title="读取用量" />{selectedFragment.has_more_saved ? <Button onClick={() => void read(Number(selectedFragment.next_offset), selectedFragment.selector)} busy={!!action.busy}>读取下一页</Button> : <p className="muted">该选择范围内的已保存材料已读完；不代表源端没有更多数据。</p>}</section> : null}
           <JsonView
             value={
               resource.data.response ??
@@ -175,7 +242,7 @@ function RunDetail({
   useEffect(() => {
     streamCursor.current = 0;
     setStream("连接中");
-    if (run && !["queued", "running", "needs_input"].includes(run.status)) {
+    if (run && !["queued", "running"].includes(run.status)) {
       setStream("记录已持久化");
       return;
     }
@@ -247,7 +314,7 @@ function RunDetail({
         <Empty title="无法读取分析" detail="请刷新或从列表中重新选择记录。" />
       </div>
     );
-  const active = ["queued", "running", "needs_input"].includes(run.status);
+  const active = ["queued", "running"].includes(run.status);
   const artifactFailure = run.artifact_error || run.report_attachment_error;
   const events = run.events || [];
   const loaded = events.some((event) => event.type === "skill_loaded");
@@ -338,6 +405,7 @@ function RunDetail({
           {stream}
         </span>
       </div>
+      {isInvestigation ? <AnalysisContextPanel value={run.analysis_context} /> : null}
       {isInvestigation ? (
         <div className="stage-records">
           <div className="stages" aria-label="运行记录留存">
@@ -419,9 +487,10 @@ function RunDetail({
                         <small>
                           {dateTime(e.created_at)}
                           {e.truncated ? " · 返回已截断" : ""}
+                          {` · ${coverageNames[e.coverage?.status || "unknown"] || "覆盖未知"}`}
                         </small>
                       </span>
-                      <Status value={e.status} />
+                      <Status value={e.coverage?.status || e.status}>{e.coverage ? coverageNames[e.coverage.status] || "覆盖未知" : undefined}</Status>
                       <ArrowRight size={15} />
                     </button>
                   ))}

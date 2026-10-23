@@ -1,0 +1,135 @@
+{
+  "schema": "aiopsstudio-evaluation-suite/1",
+  "scorer_version": "analysis-evaluation/1",
+  "baseline_ref": "bd9a949cff85e2f5b00b5dfd43d323909bfd0a1f",
+  "frozen": {
+    "path": "frozen.json",
+    "sha256": "01b938945c8e504d0234f7cc5056067d1cf3daf20b0a2a90e83080dfd9953fda"
+  },
+  "cases": [
+    {
+      "id": "normal-alert",
+      "input": "inputs/normal-alert.json",
+      "input_sha256": "2e64b379119246c95da4c97a513cbdb5e0f5486a670dbff99f0056af091a0f55",
+      "oracle": "oracles/normal-alert.json",
+      "oracle_sha256": "b6eef118fa9571e20f59bdc190b66b10cbfedec3ea5d3d98acc9421f2bacbcdc"
+    },
+    {
+      "id": "missing-data",
+      "input": "inputs/missing-data.json",
+      "input_sha256": "30cb6a6dfae5592af2871d888357d02f43132ce289f2e6a4f182a991c71de024",
+      "oracle": "oracles/missing-data.json",
+      "oracle_sha256": "a05c2e40ce7f8d78d289ae3095bdcc32dbd78357039dad510716172506749025"
+    },
+    {
+      "id": "stale-data",
+      "input": "inputs/stale-data.json",
+      "input_sha256": "a7404b34eca1e6e7dffc85616d6edd44c9ff9a9dd14d8e3e170db3b24f91d81c",
+      "oracle": "oracles/stale-data.json",
+      "oracle_sha256": "a1adff8a9e30a95f201efb1eb42a176c512ec3de617c9f2a50ee1239899910b1"
+    },
+    {
+      "id": "second-series-tail",
+      "input": "inputs/second-series-tail.json",
+      "input_sha256": "bdfcb682fbd0a2175f37f24d710326524701371d14cf10b0975b93fb22400c22",
+      "oracle": "oracles/second-series-tail.json",
+      "oracle_sha256": "4ff5eef3d9da9aaf0343fe2d97f1043c8a998dc2215059c5b9833f8534d8d118"
+    },
+    {
+      "id": "raw-tail-fragment",
+      "input": "inputs/raw-tail-fragment.json",
+      "input_sha256": "f1a27a1a17906c9cb6e99845472f8821b679198386f5c34b44a52041f8eeee41",
+      "oracle": "oracles/raw-tail-fragment.json",
+      "oracle_sha256": "af672ebed154efa314c67f268f0c2dec60f672840d7ed7e6f891fdf4f4a4b307"
+    },
+    {
+      "id": "paginated-source",
+      "input": "inputs/paginated-source.json",
+      "input_sha256": "7f9b116b658ad522df1beb90819c2495ff0d5a650c7e27fd21924815c77494bf",
+      "oracle": "oracles/paginated-source.json",
+      "oracle_sha256": "4bf4c28238eabdddf4f1bbe6f2f005219b5a80cdcdfdc15dc0f9b38d659b87f0"
+    },
+    {
+      "id": "identity-ambiguous",
+      "input": "inputs/identity-ambiguous.json",
+      "input_sha256": "3d63ba76c3a8b710643a0733427b0dc7edc9725104fc1efa5d41817059c699f8",
+      "oracle": "oracles/identity-ambiguous.json",
+      "oracle_sha256": "46d6c23d9a358b34874d93cd03b5ab6bcd273e290ccdb132fb9b3fb01a6328fc"
+    },
+    {
+      "id": "source-interface-failure",
+      "input": "inputs/source-interface-failure.json",
+      "input_sha256": "cea8a6125168389917b375ed30a60ca076cfac7b2cf5f87f86925199c529bc5f",
+      "oracle": "oracles/source-interface-failure.json",
+      "oracle_sha256": "385048eeeab47821af93776de94a64b06b3c6af808189b0eef219ea47bab54ea"
+    },
+    {
+      "id": "model-interface-failure",
+      "input": "inputs/model-interface-failure.json",
+      "input_sha256": "e3ff5988e065ada30fa9f78f4e8659f2a870cd34e94b367334d6d8ccb2a9669f",
+      "oracle": "oracles/model-interface-failure.json",
+      "oracle_sha256": "5eb1232584899ddfe0e77ab7fbd314cf94a37ed951e2607dab95b6bdd7eabbf7"
+    },
+    {
+      "id": "irrelevant-evidence",
+      "input": "inputs/irrelevant-evidence.json",
+      "input_sha256": "4db743523b982a819cece53ca0f6453864749e3bda8861325ca9924b85b563f6",
+      "oracle": "oracles/irrelevant-evidence.json",
+      "oracle_sha256": "da03a1d666917fe0a9697fabd64e8f7aad8b15d8db2bf3f8cc2feb68caf39b80"
+    },
+    {
+      "id": "model-egress-boundary",
+      "input": "inputs/model-egress-boundary.json",
+      "input_sha256": "a64fe991d28bce2578e6c767c26d7a62feae15933d3e6f201e2c96ce13753b48",
+      "oracle": "oracles/model-egress-boundary.json",
+      "oracle_sha256": "c5855e816e6542af8afad7283a58881dd03dfb0818c3433d928099bfc7a114d2"
+    },
+    {
+      "id": "sharing-revocation",
+      "input": "inputs/sharing-revocation.json",
+      "input_sha256": "bb46f3ec271a1c7814ee70a76e896e97651c24403ec305d4a9debe075d72165b",
+      "oracle": "oracles/sharing-revocation.json",
+      "oracle_sha256": "c9a6b07b0704ff2269951ba15b046b5c85df49aad6339444452477fb11a58580"
+    },
+    {
+      "id": "human-verdict",
+      "input": "inputs/human-verdict.json",
+      "input_sha256": "48537e89cf9f9ffc9c535a4ad09e52b1e49af10bcc01d692086e7179051b2a33",
+      "oracle": "oracles/human-verdict.json",
+      "oracle_sha256": "b35f68e2348ac6eef54c6182f5c35199bc684fd1e60d3123a6ece0601341b3d2"
+    },
+    {
+      "id": "references-on-demand",
+      "input": "inputs/references-on-demand.json",
+      "input_sha256": "187aa123f4a35731c47867f1a5df65079111b0db240b384f4a07443a2f10aea2",
+      "oracle": "oracles/references-on-demand.json",
+      "oracle_sha256": "74999ed1c61b379bfcc3b93b1ac406134607bad424d1553db7461417f72d6ea5"
+    },
+    {
+      "id": "consistent-recovery",
+      "input": "inputs/consistent-recovery.json",
+      "input_sha256": "193542fa939a57a55cac708559835052dc6432260c6aa8e210f88852f4dcf751",
+      "oracle": "oracles/consistent-recovery.json",
+      "oracle_sha256": "c6bbc5ca128ab3bbaa85e8c761c72e13017a41c47a0564136df7942adc14e28f"
+    }
+  ],
+  "visibility": "only inputs/frozen enter execution child; oracles loaded after replay",
+  "minimum_categories": [
+    "normal",
+    "missing",
+    "stale",
+    "multi_series_tail",
+    "raw_tail",
+    "pagination",
+    "identity_ambiguity",
+    "source_failure",
+    "model_failure",
+    "irrelevant_evidence",
+    "egress",
+    "sharing_revocation",
+    "human_verdict",
+    "references",
+    "recovery"
+  ],
+  "scorer_sha256": "c2e28b3dcd25f02640e47484719cd227458044ba4e6af239e039e8095321b02b"
+}

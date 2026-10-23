@@ -1,0 +1,438 @@
+{
+  "schema": "aiopsstudio-public-evaluation-baseline/1",
+  "measurement_date": "2026-10-23",
+  "code_ref": "bd9a949cff85e2f5b00b5dfd43d323909bfd0a1f",
+  "measurement_kind": "synthetic_model_and_source",
+  "execution": "actual_FastAPI_routes_DeepAgents_worker",
+  "comparability": {
+    "suite_sha256": "16c82a0003a5700f159ba3c45a3b875585f8e6503e125f8c96346b97c46c4d0c",
+    "frozen_sha256": "01b938945c8e504d0234f7cc5056067d1cf3daf20b0a2a90e83080dfd9953fda",
+    "scorer_sha256": "c2e28b3dcd25f02640e47484719cd227458044ba4e6af239e039e8095321b02b",
+    "model_identity": {
+      "mode": "synthetic",
+      "version": {
+        "version": "evaluation-model/1",
+        "sha256": "32ea3ff1829a3f7c181d1c3d0eb1d76af49bace495973f5101b5817ca21040d1"
+      }
+    },
+    "visibility": "only_fixed_request_and_actual_tool_reading_views"
+  },
+  "totals": {
+    "cases": {
+      "total": 15,
+      "strict_passed": 8,
+      "strict_failed": 7,
+      "not_run": 0
+    },
+    "assertions": {
+      "passed": 78,
+      "failed": 4,
+      "unknown": 6,
+      "total": 88
+    },
+    "dimensions": {
+      "facts": {
+        "passed": 4,
+        "failed": 1,
+        "unknown": 0,
+        "total": 5
+      },
+      "omissions": {
+        "passed": 5,
+        "failed": 1,
+        "unknown": 0,
+        "total": 6
+      },
+      "causality": {
+        "passed": 17,
+        "failed": 0,
+        "unknown": 0,
+        "total": 17
+      },
+      "coverage": {
+        "passed": 5,
+        "failed": 0,
+        "unknown": 0,
+        "total": 5
+      },
+      "references": {
+        "passed": 15,
+        "failed": 0,
+        "unknown": 0,
+        "total": 15
+      },
+      "boundaries": {
+        "passed": 32,
+        "failed": 2,
+        "unknown": 6,
+        "total": 40
+      }
+    },
+    "failure_classes": {
+      "omission": 1,
+      "unverified_capability": 4,
+      "factual_error": 1,
+      "privacy_violation": 2,
+      "authorization_violation": 1,
+      "recovery_gap": 1
+    }
+  },
+  "replay_consistency": {
+    "cases_repeated": 15,
+    "identical_scores": 15,
+    "first_attempts_define_totals": true,
+    "repeats_replace_first_failure": false
+  },
+  "results": [
+    {
+      "case_id": "normal-alert",
+      "category": "normal",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 7,
+        "failed": 0,
+        "unknown": 0,
+        "total": 7
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "missing-data",
+      "category": "missing",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 6,
+        "failed": 0,
+        "unknown": 0,
+        "total": 6
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "stale-data",
+      "category": "stale",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 6,
+        "failed": 0,
+        "unknown": 0,
+        "total": 6
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "second-series-tail",
+      "category": "multi_series_tail",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R03",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 7,
+        "failed": 0,
+        "unknown": 0,
+        "total": 7
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "raw-tail-fragment",
+      "category": "raw_tail",
+      "work_packages": [
+        "R01",
+        "R03",
+        "R04"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 1,
+        "unknown": 1,
+        "total": 6
+      },
+      "failure_classes": {
+        "omission": 1,
+        "unverified_capability": 1
+      },
+      "failed_assertions": [
+        "tail_fact_is_read"
+      ],
+      "unverified_assertions": [
+        "actual_fragment_receipt"
+      ]
+    },
+    {
+      "case_id": "paginated-source",
+      "category": "pagination",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R03",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 6,
+        "failed": 0,
+        "unknown": 0,
+        "total": 6
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "identity-ambiguous",
+      "category": "identity_ambiguity",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 7,
+        "failed": 0,
+        "unknown": 0,
+        "total": 7
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "source-interface-failure",
+      "category": "source_failure",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 6,
+        "failed": 0,
+        "unknown": 0,
+        "total": 6
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "model-interface-failure",
+      "category": "model_failure",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": true,
+      "assertions": {
+        "passed": 5,
+        "failed": 0,
+        "unknown": 0,
+        "total": 5
+      },
+      "failure_classes": {},
+      "failed_assertions": [],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "irrelevant-evidence",
+      "category": "irrelevant_evidence",
+      "work_packages": [
+        "R01",
+        "R02",
+        "R04"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 1,
+        "unknown": 0,
+        "total": 5
+      },
+      "failure_classes": {
+        "factual_error": 1
+      },
+      "failed_assertions": [
+        "do_not_promote_unrelated_fact"
+      ],
+      "unverified_assertions": []
+    },
+    {
+      "case_id": "model-egress-boundary",
+      "category": "egress",
+      "work_packages": [
+        "R01",
+        "R07"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 1,
+        "unknown": 1,
+        "total": 6
+      },
+      "failure_classes": {
+        "privacy_violation": 2
+      },
+      "failed_assertions": [
+        "private_marker_not_in_model_bytes"
+      ],
+      "unverified_assertions": [
+        "egress_policy_receipt"
+      ]
+    },
+    {
+      "case_id": "sharing-revocation",
+      "category": "sharing_revocation",
+      "work_packages": [
+        "R01",
+        "R07",
+        "R13"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 0,
+        "unknown": 1,
+        "total": 5
+      },
+      "failure_classes": {
+        "authorization_violation": 1
+      },
+      "failed_assertions": [],
+      "unverified_assertions": [
+        "share_revoke_reader_denied"
+      ]
+    },
+    {
+      "case_id": "human-verdict",
+      "category": "human_verdict",
+      "work_packages": [
+        "R01",
+        "R12"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 0,
+        "unknown": 1,
+        "total": 5
+      },
+      "failure_classes": {
+        "unverified_capability": 1
+      },
+      "failed_assertions": [],
+      "unverified_assertions": [
+        "verdict_is_separate"
+      ]
+    },
+    {
+      "case_id": "references-on-demand",
+      "category": "references",
+      "work_packages": [
+        "R01",
+        "R03",
+        "R05"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 1,
+        "unknown": 1,
+        "total": 6
+      },
+      "failure_classes": {
+        "unverified_capability": 2
+      },
+      "failed_assertions": [
+        "unread_reference_not_sent"
+      ],
+      "unverified_assertions": [
+        "reference_read_receipt"
+      ]
+    },
+    {
+      "case_id": "consistent-recovery",
+      "category": "recovery",
+      "work_packages": [
+        "R01",
+        "R08",
+        "R09"
+      ],
+      "strict_pass": false,
+      "assertions": {
+        "passed": 4,
+        "failed": 0,
+        "unknown": 1,
+        "total": 5
+      },
+      "failure_classes": {
+        "recovery_gap": 1
+      },
+      "failed_assertions": [],
+      "unverified_assertions": [
+        "restored_owner_and_evidence"
+      ]
+    }
+  ],
+  "measurement": {
+    "attempts": 30,
+    "input_tokens": null,
+    "output_tokens": null,
+    "estimated_cost": null,
+    "unknown_reason": "synthetic_model_has_no_provider_usage_or_frozen_prices",
+    "elapsed_recorded_per_attempt_in_external_observations": true
+  },
+  "harness_repairs_before_freeze": [
+    {
+      "issue": "failed model dispatch inherited runtime initial zero token counters",
+      "repair": "no provider receipt means null usage; initial observations preserved",
+      "is_product_improvement": false
+    },
+    {
+      "issue": "invocation list ordering used as source identity",
+      "repair": "any_match actual tool and failure status; inverse-order regression added; earlier observations preserved",
+      "is_product_improvement": false
+    }
+  ],
+  "limitations": [
+    "synthetic sources are not business acceptance",
+    "synthetic model measures pipeline fidelity, not real LLM reasoning",
+    "SQLite replay is not PostgreSQL restore verification",
+    "unknown cost/usage never treated as zero",
+    "first attempts determine totals; retries never replace first failures",
+    "No live MiniMax or other real model invocation performed for this baseline.",
+    "Future sharing/verdict/restore operations have no receipts; remain unverified.",
+    "Scores assess fidelity of a fixed conservative synthetic adapter; they are not real model quality rates."
+  ]
+}

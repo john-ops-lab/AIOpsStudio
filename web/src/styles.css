@@ -2940,4 +2940,30 @@ tbody tr:hover {
 .conversation-message .message-text .markdown h3 { font-size: 16px; }
 .conversation-message .message-text .markdown th, .conversation-message .message-text .markdown td { font-size: 12px; padding: 8px; }
 .chat-shell .topbar-identity .avatar { display: inline-flex; }
+.analysis-context-panel { margin: 12px 0; padding: 12px 14px; border: 1px solid #dce5f1; border-radius: 10px; background: #f8fafd; min-width: 0; }
+.analysis-context-panel > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.analysis-context-panel .metadata { margin-top: 12px; }
+.context-issues { padding-left: 20px; font-size: 12px; color: #98602b; line-height: 1.8; }
+.context-windows { font-size: 11px; line-height: 1.7; }
+.context-windows > div { display: flex; gap: 10px; padding: 5px 0; }
+.context-windows dt { color: #65768f; min-width: 58px; }
+.context-windows dd { margin: 0; overflow-wrap: anywhere; }
+.context-windows small { display: block; color: #7a6a45; }
+.coverage-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 10px 0; font-size: 11px; color: #79664a; }
+.coverage-summary small { flex-basis: 100%; color: #73829a; overflow-wrap: anywhere; }
+.status-forbidden, .status-historical_unsupported { color: #946231; background: #fff1df; }
+.status-empty { color: #506b84; background: #edf3f9; }
+.status-stale { color: #966b20; background: #fff5d8; }
+.grounded-report > section { border-bottom: 1px solid #e2e8f1; padding: 5px 0 12px; }
+.grounded-report > section > ol { padding-left: 22px; }
+.grounded-report li { margin: 10px 0; }
+.grounded-report li .markdown > :first-child { margin-top: 0; }
+.fragment-references { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 5px; }
+.model-draft, .material-reader { margin: 15px 0; padding: 12px; border: 1px solid #dce5f1; border-radius: 8px; min-width: 0; }
+.model-draft > summary, .material-reader > summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.material-reader > p { font-size: 12px; line-height: 1.7; }
+.fragment-anchor { font-size: 11px; overflow-wrap: anywhere; color: #5e728e; }
+.fragment-result { min-width: 0; padding: 8px 0; }
+.policy-editor .section-heading > div { min-width: 0; }
+.policy-editor .section-heading p { line-height: 1.7; }
 @media (max-width: 760px) { .conversation-message .message-text .markdown { font-size: 13px; } }

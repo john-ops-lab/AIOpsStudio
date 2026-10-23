@@ -15,6 +15,7 @@ private/
 # Runtime data and local credentials never belong in the public repository.
 /evidence/
 /artifacts/
+/var/
 *.key
 *.pem
 *.pid
