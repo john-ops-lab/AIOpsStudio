@@ -2,9 +2,11 @@
 
 完整设计统一入口为 [AIOpsStudio 完整设计](design/AIOpsStudio完整设计.md)；当前行为以 [OpenSpec 主规格](../openspec/specs/) 为准。本页记录历史交付和验收边界，已移除现场名称、地址、源资产、模型配置、运行 ID、收据哈希与私有材料索引。它不是原始在线证据，也不代表当前公开提交已在任意环境完成验收。
 
-## M1 本分支增量（2026-10-23）
+## M1 审查合并与 Mac 更新（2026-10-23）
 
-R01–R04、R07 已实现，最终436项回归与18项subtest、前端构建及固定回放通过；进入[PR #15](https://github.com/john-ops-lab/AIOpsStudio/pull/15)草稿审查：固定评估、版本化身份/窗口/覆盖、证据/Skill资料按需读取、结构字段核对、source/egress策略与历史派生物撤权。原实例未自动切换，真实MiniMax调用保持其partial/失败边界，完整业务及用户接受未宣称通过。当前计数和首败见[M1验证](validation/2026-10-23-m1.md)，后续R05/R06/R08–R13继续待开发。
+R01–R04、R07 已经[PR #15](https://github.com/john-ops-lab/AIOpsStudio/pull/15)审查修复并合并，合并提交 `0c4b9094419a1d0162abccc5779a97dfacfd561d`。最终459项回归与18项subtest、前端构建、26项OpenSpec严格校验通过；固定回放102断言通过、0失败、3未知，无已通过项退化。PR及合并后main的公开安全CI分别通过。
+
+Mac原API/Web已更新；原数据库行、配置/密钥与制品内容逐项保持。旧会话/报告以owner只读档案保留，原附件下载校验通过；继续分析需要新建会话并显式补齐身份、查询及source/egress契约。真实MiniMax完整链路在独立Mac验收实例运行，固定只读MCP测试源与原业务源分开。结果及清理状态见[审查与升级验证](validation/2026-10-23-pr15-review-upgrade.md)，初次实现首败保留在[M1原验证](validation/2026-10-23-m1.md)。完整业务及用户接受未宣称通过；R05/R06/R08–R13继续待开发。
 
 ## 已实现能力
 

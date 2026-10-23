@@ -369,6 +369,7 @@ async def test_official_mcp_sdk_against_explicit_local_fake_server(runtime):
 
 @pytest.mark.asyncio
 async def test_model_reading_view_keeps_native_evidence_and_source_facts(runtime):
+    from aiopsstudio.access_policy import PolicyError
     run = await runtime.submit({**analysis_defaults(), "skill_id": "skill_fixture", "client_request_id": "reading-view-fixture"})
     runtime._update(run["id"], {"deadline_at": "2099-01-01T00:00:00Z"})
     envelope = {"schema_version": "fixture-mcp/1", "request_id": "explicit-fixture", "data": {"models": [{"name": "fixture-model", "count": 3}]},
@@ -380,8 +381,14 @@ async def test_model_reading_view_keeps_native_evidence_and_source_facts(runtime
     native = {"structuredContent": envelope, "content": [{"type": "text", "text": json.dumps(envelope)}], "isError": False}
     async def synthetic_native():
         return native
-    reading = await runtime._invoke_source(run["id"], "server_fixture", "cmdb_list_models", {}, synthetic_native)
-    record = runtime.store.get("evidence", reading["evidence_id"])
+    # This fixture deliberately contains an unregistered effective_query.scope.
+    # Native persistence/size reduction must not grant model egress permission.
+    with pytest.raises(PolicyError) as denied:
+        await runtime._invoke_source(run["id"], "server_fixture", "cmdb_list_models", {}, synthetic_native)
+    assert denied.value.code == "policy_egress_field"
+    current = runtime.store.get("run", run["id"])
+    record = runtime.store.get("evidence", current["evidence"][0]["id"])
+    reading = runtime._model_reading_view(current, record, native)
     assert json.loads(Path(record["path"]).read_text()) == native
     assert reading["response"]["data"] == envelope["data"]
     assert reading["response"]["completeness"] == envelope["completeness"]
