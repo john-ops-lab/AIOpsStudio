@@ -23,7 +23,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from jsonschema import Draft202012Validator
 from openai import APITimeoutError
 
 from . import connectors
@@ -35,6 +34,7 @@ from .analysis_context import ContextError, freeze_context, legacy_context
 from .material_reading import ReadingError, logical_document
 from .grounded_reporting import ground_report
 from .store import LeaseLost
+from .schema_safety import offline_validator
 from .model_protocol import (ACTIVE_TOOL_TURN_POLICY, AttemptToolTurns, CompatibleChatOpenAI,
                              ToolTurnError, protocol_bytes)
 
@@ -460,7 +460,7 @@ class Runtime(TrustBoundary):
     def _new_run(self, payload):
         payload = copy.deepcopy(payload)
         mode = payload.get("mode", "analyze")
-        if mode not in {"analyze", "explain", "followup"}:
+        if not isinstance(mode, str) or mode not in {"analyze", "explain", "followup"}:
             raise HTTPException(422, "消息模式须为分析、解释或补查")
         parent = None
         if mode == "explain":
@@ -608,7 +608,7 @@ class Runtime(TrustBoundary):
                 if value is not None and (field in schema.get("properties", {}) or schema.get("additionalProperties") is not False):
                     execution_inputs[field] = value
             try:
-                Draft202012Validator(schema).validate(execution_inputs)
+                offline_validator(schema).validate(execution_inputs)
             except Exception as error:
                 raise HTTPException(422, "Skill 输入不满足已固定的 input_schema：" + str(error).split("\n", 1)[0]) from None
         policy_snapshot = self.policies.snapshot()

@@ -79,14 +79,18 @@ def test_candidate_evaluation_is_invalidated_by_frozen_combination_change(config
 
 
 def test_new_version_requires_comparable_baseline_not_only_candidate(config):
-    first = publish_with_quality(config, "model", model(config))
-    changed = config.save("model", {"expected_revision": first["revision"], "max_tokens": 3000}, first["id"])
-    run = synthetic_quality_run(config, "model", changed)
+    first = publish_with_quality(config, "mcp", mcp(config))
+    changed = config.save("mcp", {"expected_revision": first["revision"], "timeout_seconds": 31}, first["id"])
+    run = synthetic_quality_run(config, "mcp", changed)
+    run["_request"] = {"tool_name": "read", "arguments": {"marker": "fixed"}}
+    run = config.store.save("run", run["id"], run)
     quality = QualityService(config)
-    receipt = quality.evaluate("model", first["id"], {"expected_revision": changed["revision"], "candidate_run_ids": [run["id"]]})
+    receipt = quality.evaluate("mcp", first["id"], {"expected_revision": changed["revision"], "candidate_run_ids": [run["id"]]})
     assert not receipt["eligible"] and "baseline_not_verified" in receipt["reasons"]
-    baseline = synthetic_quality_run(config, "model", changed, version_id=first["current_version"], input_marker="different")
-    receipt = quality.evaluate("model", first["id"], {"expected_revision": changed["revision"], "candidate_run_ids": [run["id"]], "baseline_run_ids": [baseline["id"]]})
+    baseline = synthetic_quality_run(config, "mcp", changed, version_id=first["current_version"])
+    baseline["_request"] = {"tool_name": "read", "arguments": {"marker": "different"}}
+    baseline = config.store.save("run", baseline["id"], baseline)
+    receipt = quality.evaluate("mcp", first["id"], {"expected_revision": changed["revision"], "candidate_run_ids": [run["id"]], "baseline_run_ids": [baseline["id"]]})
     assert "case_denominator_or_input_mismatch" in receipt["reasons"]
 
 
@@ -398,6 +402,9 @@ def test_pipeline_timeout_retains_diagnostic_and_only_stops_own_group(config, mo
             return None
     monkeypatch.setattr(module.subprocess, "Popen", TimedOutProcess)
     monkeypatch.setattr(module.os, "killpg", lambda pid, sig: stopped.append((pid, sig)))
+    # A fake process has no OS process group; real descendant cleanup is
+    # exercised separately by the bounded process-group regressions.
+    monkeypatch.setattr(module.PipelineQuality, "_alive", staticmethod(lambda *args, **kwargs: False))
     result = module.PipelineQuality(config).run()
     assert result["reasons"] == ["pipeline_timeout"] and result["diagnostic_retained"] is True
     assert result["diagnostic"]["stage"] == "runner" and result["diagnostic"]["log_bytes"] > 0

@@ -14,7 +14,8 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
-from jsonschema import Draft202012Validator
+
+from .schema_safety import check_local_schema, offline_validator
 
 
 class ConnectorError(RuntimeError):
@@ -88,12 +89,10 @@ def tool_alias(server_id: str, name: str) -> str:
 
 def _check_tool_schema(item):
     # A remote schema may describe data, never trigger remote $ref retrieval.
-    from .config import ConfigService
     try:
         for key in ("inputSchema", "outputSchema"):
             if item.get(key) is not None:
-                Draft202012Validator.check_schema(item[key])
-                ConfigService._local_schema(item[key])
+                check_local_schema(item[key])
     except Exception:
         raise ConnectorError("工具目录包含无效或远程引用的 JSON Schema", "catalog_schema_invalid") from None
 
@@ -202,7 +201,7 @@ def permitted_tool(config: dict, tool_name: str) -> dict:
 
 async def mcp_call(config: dict, vault, tool_name: str, arguments: dict, request_observer=None) -> dict:
     frozen = permitted_tool(config, tool_name)
-    Draft202012Validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
+    offline_validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
     async with _session(config, vault, request_observer) as (session, initialized):
         # A fresh connection must recheck remote definitions before dispatch.
         cursor, found, seen, names = None, None, set(), set()

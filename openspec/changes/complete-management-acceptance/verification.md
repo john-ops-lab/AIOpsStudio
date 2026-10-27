@@ -40,3 +40,15 @@
 ## M2 主集成完成
 
 统一最终验收与首败见 [M2 集成验收](../../../docs/validation/2026-10-27-m2.md)。本批提交一个集成 PR 供审查；不合并、不更新原实例，也不将隔离验收称为用户接受。
+
+## OCR 补修：Schema 离线检索与实例样本
+
+OCR 指出原静态递归只检查 $ref，遗漏 $dynamicRef；实际验证使用默认 registry，旧已发布的 MCP/Skill schema 可触发隐式外部检索。同时递归所有字典会将 examples/default/const/enum 中合法的实例 $ref 键误当 schema 引用。
+
+独立首跑 **8 failed / 1 passed**：旧 MCP 的 $ref/$dynamicRef 和旧 Skill 输入验证实际进入 urllib 检索 hook，测试仅返回内存中的合成 schema，未发网络；四种实例数据误拒均复现。修复为共享离线模块，使用规范 Resource.subresources() 仅遍历 schema 节点，并对元 schema 和真实输入验证显式提供拒绝检索的 Registry；不读取 HTTP、文件或其他 URI。本地 $defs、静态锚点和动态锚点保持有效。
+
+最终定向 **155 passed / 6.78 秒**，覆盖 schema/config/connector/runtime/管理模块；包括 12 类子 schema 位置的两种引用、四类实例数据、真实旧版本入口，以及静态预检被测试替换时实际验证仍零检索的纵深防护。实现参考 [jsonschema 4.26 官方引用配置说明](https://python-jsonschema.readthedocs.io/en/stable/referencing/) 与本机已锁定 referencing 公共 API，未安装依赖、启动服务或调用真实模型。此结果不代替主集成全套和后续 OCR 复审。
+
+## Astra 本地复审
+
+修复和最新验证见 [OCR 复审记录](../../../docs/validation/2026-10-27-m2-ocr.md)。原 MiniMax 样本及初版测试计数保留其历史含义，不冒充本轮重新执行。

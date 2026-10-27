@@ -20,6 +20,11 @@ from .config import ConfigError
 from .store import utcnow
 
 _LOCK = threading.Lock()
+GROUP_TERM_GRACE_SECONDS = 5
+GROUP_KILL_WAIT_SECONDS = 5
+# Retain private outputs until an unkillable owned group actually stops. A new
+# run reaps completed entries while holding _LOCK; active groups keep the DB lock.
+_PENDING_TEMPORARIES = {}
 BASELINE_REF = "bd9a949cff85e2f5b00b5dfd43d323909bfd0a1f"
 # The unchanged replay adapter cannot exercise these independent integrations.
 # They remain unknown in the full denominator, not passed or discarded.
@@ -77,6 +82,32 @@ def failure_diagnostic(error, stage, *, external=None, exit_code=None):
     return result
 
 
+def _replay_digests(root, suite_path, suite):
+    """Bind evaluator code and actual fixed inputs, independently of app code."""
+    root, suite_root = root.resolve(), suite_path.parent.resolve()
+    implementation = {}
+    for path in sorted((root / "backend/aiopsstudio/evaluation").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        if path.is_symlink() or not path.resolve().is_relative_to(root):
+            raise ConfigError("固定回放实现路径无效", "pipeline_material_invalid")
+        implementation[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if not implementation:
+        raise ConfigError("固定回放实现缺失", "pipeline_material_invalid")
+    relative_files = {suite["frozen"]["path"]}
+    for case in suite["cases"]:
+        relative_files.update((case["input"], case["oracle"]))
+    material = {}
+    for relative in sorted(relative_files):
+        path = suite_root / relative
+        if path.is_symlink() or not path.resolve().is_relative_to(suite_root) or not path.is_file():
+            raise ConfigError("固定回放材料路径无效", "pipeline_material_invalid")
+        material[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    encode = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return {"replay_implementation_digest": hashlib.sha256(encode(implementation)).hexdigest(),
+            "fixed_material_digest": hashlib.sha256(encode(material)).hexdigest()}
+
+
 def fingerprint():
     from .management_quality import implementation_digest
     root = Path(__file__).resolve().parents[2]
@@ -90,7 +121,7 @@ def fingerprint():
         "frozen_digest": hashlib.sha256(frozen_path.read_bytes()).hexdigest(),
         "scorer_digest": hashlib.sha256((root / "backend/aiopsstudio/evaluation/scoring.py").read_bytes()).hexdigest(),
         "runner_digest": hashlib.sha256((root / "scripts/evaluate_analysis.py").read_bytes()).hexdigest(),
-        "baseline_ref": BASELINE_REF}
+        "baseline_ref": BASELINE_REF, **_replay_digests(root, suite_path, suite)}
 
 
 def grade(candidate, baseline, comparison):
@@ -155,13 +186,96 @@ class PipelineQuality:
     def _alive(pid, *, group=False):
         if type(pid) is not int or pid < 2:
             return False
+        permission_denied = False
         try:
             (os.killpg if group else os.kill)(pid, 0)
-            return True
         except ProcessLookupError:
             return False
         except PermissionError:
+            # macOS can return EPERM for an owned zombie-only process group.
+            # Confirm states rather than retaining that group indefinitely.
+            permission_denied = True
+        # kill(0) also succeeds for zombies. In containers a non-reaping PID 1
+        # can keep these entries indefinitely even though no code can run.
+        # ps supports these fields on both macOS and Linux; inspect only this
+        # owned PID/PGID, and keep the lock if observation is unavailable.
+        command = ["ps", "-axo", "pgid=,stat="] if group else ["ps", "-p", str(pid), "-o", "stat="]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=2)
+            if not group and result.returncode == 1 and isinstance(result.stdout, str) and not result.stdout.strip():
+                # The PID may have exited between kill(0) and ps. Only a
+                # definite disappearance permits reclaiming its expired lock.
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    return False
+                except OSError:
+                    return True
+            if result.returncode or not isinstance(result.stdout, str):
+                return True
+            states = []
+            for line in result.stdout.splitlines():
+                fields = line.split()
+                if group:
+                    if len(fields) != 2:
+                        return True
+                    try:
+                        observed_group = int(fields[0])
+                    except ValueError:
+                        return True
+                    # macOS may print -1 for an already detached zombie.
+                    if observed_group != pid:
+                        continue
+                    states.append(fields[1])
+                else:
+                    if len(fields) != 1:
+                        return True
+                    states.append(fields[0])
+            if not states and permission_denied:
+                return True  # No reliable observation of an inaccessible group.
+            return any(state[0] not in {"Z", "X"} for state in states)
+        except (OSError, subprocess.SubprocessError, UnicodeError):
             return True
+
+    def _stop_process_group(self, proc):
+        """Reap the leader AND every descendant in this Popen-owned group."""
+        alive = lambda: self._alive(proc.pid, group=True)
+        if proc.poll() is not None and not alive():
+            return True
+        deadline = time.monotonic() + GROUP_TERM_GRACE_SECONDS
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=max(.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pass
+        while alive() and time.monotonic() < deadline:
+            time.sleep(.02)
+        if not alive():
+            return True
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + GROUP_KILL_WAIT_SECONDS
+        try:
+            proc.wait(timeout=max(.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pass
+        while alive() and time.monotonic() < deadline:
+            time.sleep(.02)
+        return not alive()
+
+    def _reap_finished_temporaries(self):
+        for token, (temporary, pgid) in list(_PENDING_TEMPORARIES.items()):
+            if not self._alive(pgid, group=True):
+                try:
+                    temporary.cleanup()
+                except OSError:
+                    continue
+                del _PENDING_TEMPORARIES[token]
 
     def _claim(self, token):
         def claim():
@@ -173,11 +287,12 @@ class PipelineQuality:
                 "owner_pid": os.getpid(), "expires_at": time.time() + 320})
         self.store.atomic(claim)
 
-    def _release(self, token):
+    def _release(self, token, *, group_stopped=True):
         def release():
             item = self.store.get("quality_pipeline_lock", "main")
             if item and item.get("token") == token:
-                self.store.save("quality_pipeline_lock", "main", {"active": False, "token": token, "expires_at": 0})
+                self.store.save("quality_pipeline_lock", "main", {**item, "active": not group_stopped,
+                    "token": token, "owner_pid": None, "expires_at": 0, "cleanup_pending": not group_stopped})
         self.store.atomic(release)
 
     def _retain_failure(self, rid, diagnostic):
@@ -205,7 +320,9 @@ class PipelineQuality:
         rid, started, claimed = "pipeline_" + secrets.token_hex(12), time.monotonic(), False
         record = {"status": "running", "owner_id": actor, "eligible": False, "created_at": utcnow(), "provenance": "controlled-r01-runner/1"}
         proc, code, stage, external, temporary = None, None, "claim", None, None
+        group_stopped = True
         try:
+            self._reap_finished_temporaries()
             self._claim(rid)
             claimed = True
             stage = "fingerprint"
@@ -238,13 +355,15 @@ class PipelineQuality:
                 except subprocess.TimeoutExpired:
                     raise ConfigError("固定质量回放达到时间上限，已停止本次任务", "pipeline_timeout") from None
                 finally:
-                    if proc.poll() is None:
-                        os.killpg(proc.pid, signal.SIGTERM)
-                        try:
-                            proc.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            os.killpg(proc.pid, signal.SIGKILL)
-                            proc.wait(timeout=5)
+                    # A successfully exited leader can still leave live workers.
+                    # Do not remove their files or release the cross-process lock.
+                    try:
+                        group_stopped = self._stop_process_group(proc)
+                    except (OSError, subprocess.SubprocessError):
+                        group_stopped = False
+                    if not group_stopped:
+                        stage = "runner_cleanup"
+                        raise ConfigError("固定质量回放进程组尚未停止，继续保留隔离锁", "pipeline_process_cleanup_pending")
             if code:
                 raise ConfigError("固定质量回放未完成，未批准发布", "pipeline_runner_failed")
             stage = "load_results"
@@ -272,10 +391,14 @@ class PipelineQuality:
                 record["diagnostic_retained"] = False
         finally:
             if temporary is not None:
-                try:
-                    temporary.cleanup()
-                except OSError:
+                if not group_stopped:
                     record["temporary_cleanup_pending"] = True
+                    _PENDING_TEMPORARIES[rid] = (temporary, proc.pid)
+                else:
+                    try:
+                        temporary.cleanup()
+                    except OSError:
+                        record["temporary_cleanup_pending"] = True
             record.update(completed_at=utcnow(), elapsed_seconds=round(time.monotonic() - started, 3))
             try:
                 saved = self.store.save("quality_pipeline", rid, record)
@@ -283,6 +406,6 @@ class PipelineQuality:
                     {"status": record["status"], "eligible": record["eligible"], "reasons": record.get("reasons", [])}, actor=actor)
             finally:
                 if claimed:
-                    self._release(rid)
+                    self._release(rid, group_stopped=group_stopped)
                 _LOCK.release()
         return saved

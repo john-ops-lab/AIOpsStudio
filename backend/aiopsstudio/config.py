@@ -11,13 +11,14 @@ import re
 import secrets
 import shutil
 import tempfile
+import time
 from datetime import date
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
-from jsonschema import Draft202012Validator
 import yaml
 
+from .schema_safety import check_local_schema
 from .store import Store, StoreConflict, utcnow
 
 
@@ -201,7 +202,6 @@ class ConfigService:
             if not isinstance(item["dependencies"], list):
                 raise ConfigError("依赖必须为列表")
             try:
-                Draft202012Validator.check_schema(item["input_schema"])
                 self._local_schema(item["input_schema"])
             except Exception:
                 raise ConfigError("输入 JSON Schema 无效") from None
@@ -237,10 +237,8 @@ class ConfigService:
                 raise ConfigError("工具名称或白名单不能重复")
             for tool in item["tools"]:
                 try:
-                    Draft202012Validator.check_schema(tool.get("inputSchema", {"type": "object"}))
                     self._local_schema(tool.get("inputSchema", {}))
                     if tool.get("outputSchema") is not None:
-                        Draft202012Validator.check_schema(tool["outputSchema"])
                         self._local_schema(tool["outputSchema"])
                 except Exception:
                     raise ConfigError("工具输入 JSON Schema 无效") from None
@@ -280,14 +278,10 @@ class ConfigService:
 
     @staticmethod
     def _local_schema(schema):
-        if isinstance(schema, dict):
-            if "$ref" in schema and (not isinstance(schema["$ref"], str) or not schema["$ref"].startswith("#")):
-                raise ConfigError("JSON Schema 仅允许本地引用")
-            for value in schema.values():
-                ConfigService._local_schema(value)
-        elif isinstance(schema, list):
-            for value in schema:
-                ConfigService._local_schema(value)
+        try:
+            check_local_schema(schema)
+        except Exception:
+            raise ConfigError("JSON Schema 无效或包含非本地引用") from None
 
     def validate(self, kind, item):
         errors, warnings = [], []
@@ -383,22 +377,30 @@ class ConfigService:
             raise ConfigError("指定发布版本不存在")
         return copy.deepcopy(version["snapshot"])
 
-    def _skill_artifact(self, snapshot, item):
+    def _artifact_state(self, directory):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ConfigError("不可变 Skill 制品目录无效")
+        root = self.artifact_dir.resolve()
+        result = {}
+        for path in [directory, *directory.rglob("*")]:
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                raise ConfigError("Skill 制品包含符号链接或越界路径")
+            info = path.stat()
+            result[path.relative_to(directory).as_posix()] = (info.st_dev, info.st_ino, info.st_mode,
+                info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        return result
+
+    def _prepare_skill_artifact(self, snapshot, item):
         root = self.artifact_dir.resolve()
         directory = root / snapshot["artifact_digest"]
         files = {"SKILL.md": item["content"], **item["references"]}
         if directory.exists() or directory.is_symlink():
-            if directory.is_symlink() or not directory.is_dir():
-                raise ConfigError("不可变 Skill 制品目录无效")
-            existing = {}
-            for path in directory.rglob("*"):
-                if path.is_symlink() or not path.resolve().is_relative_to(root):
-                    raise ConfigError("Skill 制品包含符号链接或越界路径")
-                if path.is_file():
-                    existing[path.relative_to(directory).as_posix()] = path.read_text()
-            if existing != files:
+            before = self._artifact_state(directory)
+            existing = {path.relative_to(directory).as_posix(): path.read_text(encoding="utf-8")
+                        for path in directory.rglob("*") if path.is_file()}
+            if existing != files or before != self._artifact_state(directory):
                 raise ConfigError("不可变 Skill 制品内容冲突")
-            return directory
+            return {"directory": directory, "stage": None, "state": before}
         stage = Path(tempfile.mkdtemp(prefix=".skill-", dir=root))
         try:
             for name, content in files.items():
@@ -407,50 +409,112 @@ class ConfigService:
                 with target.open("x", encoding="utf-8") as stream:
                     stream.write(content)
                 target.chmod(0o444)
-            os.replace(stage, directory)
-            return directory
+            return {"directory": directory, "stage": stage, "state": self._artifact_state(stage)}
+        except BaseException:
+            shutil.rmtree(stage)
+            raise
+
+    def _check_prepared_skill_artifact(self, prepared):
+        # All discovery and recursive metadata IO happens before Store.atomic.
+        directory, stage = prepared["directory"], prepared["stage"]
+        if self._artifact_state(stage or directory) != prepared["state"]:
+            raise ConfigError("Skill 制品准备后已变化")
+        if stage is not None and (directory.exists() or directory.is_symlink()):
+            raise StoreConflict("Skill 制品目录已被并发创建，请重新发布")
+        return {**prepared, "authority": self}
+
+    def _activate_skill_artifact(self, prepared):
+        # Only the necessary atomic rename remains in the DB transaction.
+        # Managed publishers serialize by revision; packages are immutable.
+        if prepared.get("authority") is not self or time.monotonic() > prepared.get("commit_deadline", 0):
+            raise ConfigError("Skill 制品提交票据已过期，请重新预检", "quality_precheck_expired")
+        directory, stage = prepared["directory"], prepared["stage"]
+        if stage is not None:
+            try:
+                os.replace(stage, directory)
+            except OSError:
+                raise ConfigError("Skill 制品激活前已变化，请重新预检") from None
+            # Rollback also uses only rename. Recursive deletion is deferred to
+            # the caller's finally block after Store has released its lock.
+            self.store.on_rollback(lambda: os.replace(directory, stage))
+        return directory
+
+    def _skill_artifact(self, snapshot, item):
+        # Compatibility helper; publication stages content outside its DB lock.
+        from .management_quality import PUBLICATION_TICKET_SECONDS
+        prepared = self._prepare_skill_artifact(snapshot, item)
+        try:
+            prepared = self._check_prepared_skill_artifact(prepared)
+            prepared["commit_deadline"] = time.monotonic() + PUBLICATION_TICKET_SECONDS
+            return self.store.atomic(lambda: self._activate_skill_artifact(prepared))
         finally:
-            if stage.exists():
-                shutil.rmtree(stage)
+            if prepared["stage"] is not None and prepared["stage"].exists():
+                shutil.rmtree(prepared["stage"])
 
     def publish(self, kind, id, expected_revision=None, *, channel="formal", evaluation_id=None):
+        item = self.require(kind, id)
+        if expected_revision is None:
+            raise ConfigError("发布必须提供 expected_revision", "revision_required")
+        if item["revision"] != expected_revision:
+            raise StoreConflict("发布时草稿已变化，请重新检查")
+        if channel not in {"formal", "experimental"}:
+            raise ConfigError("发布通道必须为 formal 或 experimental", "publication_channel_invalid")
+        if item.get("blocked"):
+            raise ConfigError("配置已立即阻止，请先明确解除阻止后重新校验", "capability_blocked")
+        from .management_quality import QualityService, PUBLICATION_TICKET_SECONDS
+        service = QualityService(self)
+        metadata = self.store.atomic(lambda: service._evaluation_state(kind, id, set(), "admin", include_pipeline=False))
+        # Schema validation, proof rescoring and immutable file preparation may
+        # be expensive. Never hold Store's writer lock while doing this work.
+        validation = self.validate(kind, item)
+        if not validation["valid"]:
+            raise ConfigError("发布校验未通过：" + "；".join(validation["errors"]))
+        prepared_quality = service.prepare_eligible(kind, id, evaluation_id) if channel == "formal" else None
+        quality = prepared_quality.record if prepared_quality else None
+        snapshot = {k: copy.deepcopy(v) for k, v in item.items() if k not in {"versions", "validation", "current_version", "publication_quality"}}
+        snapshot.update(enabled=channel == "formal", blocked=False, status="published" if channel == "formal" else "experimental", channel=channel)
+        if quality:
+            snapshot["publication_quality"] = {"evaluation_id": quality["id"], "suite_version": quality["policy"]["suite_version"],
+                "scorer_digest": quality["policy"]["scorer_digest"], "binding": quality["binding"], "eligible": True}
+        snapshot["artifact_digest"] = digest(snapshot)
+        prepared_artifact = self._prepare_skill_artifact(snapshot, item) if kind == "skill" else None
+        if prepared_artifact:
+            snapshot["artifact_path"] = str(prepared_artifact["directory"])
         def action():
-            item = self.require(kind, id)
-            if expected_revision is None:
-                raise ConfigError("发布必须提供 expected_revision", "revision_required")
-            if item["revision"] != expected_revision:
+            current = self.require(kind, id)
+            if current["revision"] != expected_revision:
                 raise StoreConflict("发布时草稿已变化，请重新检查")
-            if channel not in {"formal", "experimental"}:
-                raise ConfigError("发布通道必须为 formal 或 experimental", "publication_channel_invalid")
-            if item.get("blocked"):
-                raise ConfigError("配置已立即阻止，请先明确解除阻止后重新校验", "capability_blocked")
-            validation = self.validate(kind, item)
-            if not validation["valid"]:
-                raise ConfigError("发布校验未通过：" + "；".join(validation["errors"]))
-            quality = None
-            if channel == "formal":
-                from .management_quality import QualityService
-                quality = QualityService(self).require_eligible(kind, id, evaluation_id)
-            snapshot = {k: copy.deepcopy(v) for k, v in item.items() if k not in {"versions", "validation", "current_version", "publication_quality"}}
-            snapshot.update(enabled=channel == "formal", blocked=False, status="published" if channel == "formal" else "experimental", channel=channel)
-            if quality:
-                snapshot["publication_quality"] = {"evaluation_id": quality["id"], "suite_version": quality["policy"]["suite_version"],
-                    "scorer_digest": quality["policy"]["scorer_digest"], "binding": quality["binding"], "eligible": True}
-            snapshot["artifact_digest"] = digest(snapshot)
-            if kind == "skill":
-                snapshot["artifact_path"] = str(self._skill_artifact(snapshot, item))
+            if service._evaluation_state(kind, id, set(), "admin", include_pipeline=False) != metadata:
+                raise StoreConflict("发布预检后配置、依赖或凭据已变化，请重新检查")
+            if prepared_quality:
+                service.verify_prepared(prepared_quality, kind, id, evaluation_id)
+            if prepared_artifact:
+                self._activate_skill_artifact(prepared_artifact)
             vid = "v_" + secrets.token_hex(12)
             version = {"id": vid, "created_at": utcnow(), "source_revision": item["revision"], "digest": digest(snapshot), "snapshot": snapshot, "channel": channel}
-            item["versions"].append(version)
+            current["versions"].append(version)
             if channel == "formal":
-                item.update(current_version=vid, enabled=True, blocked=False, status="published", validation=validation,
+                current.update(current_version=vid, enabled=True, blocked=False, status="published", validation=validation,
                     publication_quality=snapshot["publication_quality"])
             else:
-                item.update(validation=validation)
-            saved = self.store.save(kind, id, item, item["revision"])
+                current.update(validation=validation)
+            saved = self.store.save(kind, id, current, current["revision"])
             self.audit("publish", kind, id, {"version_id": vid, "digest": version["digest"], "channel": channel, "evaluation_id": evaluation_id})
             return saved
-        return self.store.atomic(action)
+        try:
+            if prepared_artifact:
+                prepared_artifact = self._check_prepared_skill_artifact(prepared_artifact)
+            if prepared_quality:
+                prepared_quality = service.finalize_prepared(prepared_quality)
+            # Both final filesystem scans are finished before the common
+            # deadline begins. Waiting too long for Store requires a new check.
+            deadline = prepared_quality.commit_deadline if prepared_quality else time.monotonic() + PUBLICATION_TICKET_SECONDS
+            if prepared_artifact:
+                prepared_artifact["commit_deadline"] = deadline
+            return self.store.atomic(action)
+        finally:
+            if prepared_artifact and prepared_artifact["stage"] is not None and prepared_artifact["stage"].exists():
+                shutil.rmtree(prepared_artifact["stage"])
 
     def rollback(self, kind, id, version_id):
         def action():

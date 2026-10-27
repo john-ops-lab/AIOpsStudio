@@ -14,6 +14,8 @@
 8. queue_limit 真实参与所有 purpose 入队，调低只限制新增，不取消已入队。管理草稿仅在显式 test 选择下允许 disabled/unpublished 候选；blocked、凭据、策略和资源预算照常拒绝。管理测试 quality_binding 由服务端按实际采用快照生成，普通分析拒绝 experimental Skill。
 9. retry 入队与初次 submit 一致，仅根据已有凭据metadata拒绝已撤销项，不在入队阶段解密。缺失或无法解密的凭据由派发前 guard 拒绝，实际请求为零。内部 AG-UI protocol_message_id 固定到新 run 的 client_message_id，协议 runId 变化仍按用户消息身份重放原收据；公共重试 HTTP 不能注入该内部字段。
 10. 恢复路径按声明字段的规范化源根相对位置映射，兼容 Mac 的路径别名。legacy_archive对完整记录的摘要先按签名源行严格核验，再仅为路径重定位后的目标重新绑定entry/plan摘要，保存原摘要与备份签名证明链；不改通用archived校验、不解除只读、不写原源。源档案已篡改时恢复事务拒绝。
+11. 重定位使用文档类型及固定 schema 路径白名单：settings.artifact_dir，evidence/attachment/material_read 的顶层 path，skill 的版本包 artifact_path，以及 run.evidence 和 run.config_snapshot 中对应的服务端定位字段。run.inputs、report、history、补读 result/anchor、用户材料、配置参数及未知文档均视为不透明业务数据；即使含同名键，也不得递归重写。
+12. 备份的一致边界还要求 worker slot 已释放；run 终态不能代表会话/制品交付完成。即使槽租约已过期，也不由备份修改原执行状态或清槽，需原恢复流程明确收尾。create_backup 可接收 master_key_path，解析别名后若属于制品根则在创建包前拒绝；即使未提供路径，流式复制仍检查跨块明文主密钥并拒绝/回收失败包。数据库序列化结果也在任何 database.json 写入前检查同一明文密钥，防止会话等记录与 Vault 密文共同打包；不误拒不同文本，不输出密钥或路径。
 
 ## Validation
 

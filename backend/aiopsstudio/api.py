@@ -222,7 +222,9 @@ def configure_api(app: FastAPI):
             payload = await json_body(request)
             if "expected_revision" not in payload:
                 raise ConfigError("发布必须提供 expected_revision", "revision_required")
-            return public(service.publish(kind, id, payload["expected_revision"], channel=payload.get("channel", "formal"), evaluation_id=payload.get("evaluation_id")))
+            result = await asyncio.to_thread(service.publish, kind, id, payload["expected_revision"],
+                channel=payload.get("channel", "formal"), evaluation_id=payload.get("evaluation_id"))
+            return public(result)
 
         @app.post(path + "/{id}/state", name=f"state_{kind}")
         async def state(id: str, request: Request):

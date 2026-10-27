@@ -27,6 +27,9 @@ def main():
     parser.add_argument('--current-authorization-file')
     args=parser.parse_args()
     os.umask(0o077)
+    if args.action == "backup" and args.master_key_file and args.artifact_dir:
+        if Path(args.master_key_file).resolve().is_relative_to(Path(args.artifact_dir).resolve()):
+            raise BackupError("master_key_in_artifacts")
     if args.action in {'backup','restore','verify'}:
         if not args.master_key_file or not args.backup_dir:
             parser.error('backup/restore/verify需要--master-key-file和--backup-dir')
@@ -46,7 +49,7 @@ def main():
         else:
             if not args.artifact_dir: parser.error('backup/restore需要--artifact-dir')
             if args.action=='backup':
-                manifest=create_backup(store,args.artifact_dir,args.backup_dir,master_key=key)
+                manifest=create_backup(store,args.artifact_dir,args.backup_dir,master_key=key,master_key_path=args.master_key_file)
                 result={'status':'backed_up','files':len(manifest['files']),'tables':len(manifest['tables']),'bytes':manifest['total_bytes']}
             else:
                 result=restore_backup(store,args.artifact_dir,args.backup_dir,master_key=key)

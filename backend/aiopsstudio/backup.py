@@ -146,10 +146,12 @@ def _check_references(store, root, files):
                 raise BackupError("skill_reference_set")
 
 
-def create_backup(store, artifact_dir, destination, *, master_key, max_bytes=MAX_BACKUP_BYTES):
+def create_backup(store, artifact_dir, destination, *, master_key, master_key_path=None, max_bytes=MAX_BACKUP_BYTES):
     """Acquire the same writer lock, reject active jobs, copy one consistency set."""
     key = _key(master_key)
     root, target = Path(artifact_dir).resolve(), Path(destination).resolve()
+    if master_key_path is not None and Path(master_key_path).resolve().is_relative_to(root):
+        raise BackupError("master_key_in_artifacts")
     if target.exists() or target == root or target.is_relative_to(root):
         raise BackupError("destination_not_empty")
     if not root.is_dir() or not 1 <= max_bytes <= 1024 * 1024 * 1024:
@@ -157,7 +159,12 @@ def create_backup(store, artifact_dir, destination, *, master_key, max_bytes=MAX
     target.mkdir(parents=True, mode=0o700)
     try:
         def capture():
-            if any(r.get("status") in {"queued", "running"} for r in store.list("run")):
+            slot = store._execute(f"SELECT owner,run_id,expires_at FROM {store._worker_slot} WHERE id=1").fetchone()
+            # Terminal run status precedes conversation/file delivery. An
+            # unreleased slot, even expired, is not a completed consistency point.
+            # Only the execution/recovery path may clear it; backup stays read-only.
+            if (not slot or slot[0] is not None or slot[1] is not None or slot[2] != 0
+                    or any(r.get("status") in {"queued", "running"} for r in store.list("run"))):
                 raise BackupError("active_execution")
             from cryptography.fernet import Fernet
             try:
@@ -182,6 +189,8 @@ def create_backup(store, artifact_dir, destination, *, master_key, max_bytes=MAX
                     rows.append(encoded)
                 tables.append({"name": table, "columns": columns, "rows": rows})
             database = canonical({"engine": "sqlite" if store.sqlite else "postgresql", "namespace": store.namespace, "tables": tables})
+            if key in database:
+                raise BackupError("master_key_in_database")
             total = len(database)
             if total > max_bytes:
                 raise BackupError("backup_limit")
@@ -201,7 +210,12 @@ def create_backup(store, artifact_dir, destination, *, master_key, max_bytes=MAX
                 # Bound reads per file; the total set has already been checked.
                 h = hashlib.sha256()
                 with source.open("rb") as reader, output.open("xb") as writer:
+                    tail = b""
                     while chunk := reader.read(1024 * 1024):
+                        examined = tail + chunk
+                        if key in examined:
+                            raise BackupError("master_key_in_artifacts")
+                        tail = examined[-(len(key) - 1):]
                         writer.write(chunk); h.update(chunk)
                 output.chmod(0o600)
                 after = source.stat()
@@ -279,6 +293,52 @@ def _assert_empty_target(store):
             raise BackupError("target_checkpoints_not_empty")
 
 
+def _relocate_document(kind, document, original_root, target):
+    """Move server-owned locators at known schema positions, never business JSON."""
+    document = copy.deepcopy(document)
+
+    def locator(record, field):
+        if not isinstance(record, dict):
+            return
+        value = record.get(field)
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            return
+        try:
+            relative = Path(value).resolve().relative_to(original_root)
+        except ValueError:
+            return
+        record[field] = str(target / relative)
+
+    def skill(record):
+        if not isinstance(record, dict):
+            return
+        locator(record, "artifact_path")
+        # Published snapshots normally contain no versions. A frozen draft may
+        # also retain the known version-list/dictionary schema from its entity.
+        versions = record.get("versions", [])
+        entries = versions.values() if isinstance(versions, dict) else versions if isinstance(versions, list) else []
+        for entry in entries:
+            if isinstance(entry, dict):
+                skill(entry.get("snapshot") or entry.get("data") or entry)
+
+    if kind == "settings":
+        locator(document, "artifact_dir")
+    elif kind in {"evidence", "attachment", "material_read"}:
+        locator(document, "path")
+    elif kind == "skill":
+        skill(document)
+    elif kind == "run":
+        evidence_records = document.get("evidence")
+        for evidence in evidence_records if isinstance(evidence_records, list) else []:
+            locator(evidence, "path")
+        snapshot = document.get("config_snapshot")
+        if isinstance(snapshot, dict):
+            locator(snapshot.get("settings"), "artifact_dir")
+            skill(snapshot.get("skill"))
+            skill(snapshot.get("cmdb_skill"))
+    return document
+
+
 def restore_backup(store, artifact_dir, backup_dir, *, master_key):
     """Restore only into a fresh Store. No active sessions or old leases survive."""
     manifest, database = verify_backup(backup_dir, master_key=master_key)
@@ -339,19 +399,7 @@ def restore_backup(store, artifact_dir, backup_dir, *, master_key):
                         original_documents[(values[0], values[1])] = copy.deepcopy(item)
                         if values[0] in {"auth_session", "session"}:
                             continue
-                        def rebase(value, path_field=False):
-                            if isinstance(value, dict):
-                                return {k: rebase(v, k in {"path", "artifact_dir", "artifact_path"}) for k, v in value.items()}
-                            if isinstance(value, list): return [rebase(v, path_field) for v in value]
-                            if path_field and isinstance(value, str) and Path(value).is_absolute():
-                                try:
-                                    relative = Path(value).resolve().relative_to(original_root)
-                                except ValueError:
-                                    pass
-                                else:
-                                    return str(target / relative)
-                            return value
-                        item = rebase(item)
+                        item = _relocate_document(values[0], item, original_root, target)
                         if values[0] == "run" and item.get("status") in {"queued", "running"}:
                             item.update(status="failed", error={"code": "restore_interrupted", "message": "恢复不自动重放原请求"})
                         values[2] = store._pack(item)

@@ -223,7 +223,7 @@ class ConversationsService:
             if existing and existing.get("status") != "pending":
                 return self._receipt(id, owner_id, existing)
             mode = existing.get("mode", "analyze") if existing else payload.get("mode", "analyze")
-            if mode not in {"analyze", "explain", "followup"}:
+            if not isinstance(mode, str) or mode not in {"analyze", "explain", "followup"}:
                 raise HTTPException(422, "消息模式须为 analyze、explain 或 followup")
             if mode == "explain" and attachment_ids:
                 raise HTTPException(422, "解释已有结果不能添加新材料，请使用补查模式")

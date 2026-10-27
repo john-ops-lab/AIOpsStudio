@@ -1136,3 +1136,7 @@ Issue：[[R13][M4] 实现告警自动接收与分析](https://github.com/john-op
 产品、源码包、仓库链接和通用演示素材统一采用 AIOpsStudio；更名与配置/表/Cookie 的有界兼容见第 13.3 节及 [rename-aiopsstudio](../../openspec/changes/rename-aiopsstudio/proposal.md)。该修订不新增或关闭 R01–R13，不改变 E01–E21 和 91 条工作包验收条件，也不将构建、兼容测试或公开发布通过计作新的业务分析验收。首次整合的静态核对边界和历史模型结果继续保留。
 
 品牌入口在 Mac 的兼容切换及其独立验证见[本次更名验证](../../openspec/changes/rename-aiopsstudio/verification.md)。该切换保留原配置、数据库与用户材料，不改变首次文档整合的历史边界，也不作为后续业务工作包完成证明。
+
+## M2 本地审查补修说明
+
+PR #17 的本地 Astra 复审补强了离线 Schema、实际案例/当前基线绑定、锁外重操作与短提交、完整回放指纹/进程组、独立密钥备份和失败重试交互。恢复只移动服务端固定位置的文件定位字段，业务 JSON 原值保留。具体判据、首败和各次验证见 [OCR 复审记录](../validation/2026-10-27-m2-ocr.md)，原 MiniMax 结果不改称本轮重新运行。

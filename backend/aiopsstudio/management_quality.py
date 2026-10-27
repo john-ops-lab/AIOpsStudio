@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from pathlib import Path
 import re
 import secrets
+import time
 
 from fastapi import Request
 
@@ -26,6 +28,22 @@ FIELDS = {
 }
 PURPOSES = {"skill": "skill_test", "model": "model_test", "mcp": "tool_test"}
 TERMINAL = {"succeeded", "partial", "failed", "needs_input", "cancelled"}
+PUBLICATION_TICKET_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class _PreparedQuality:
+    store: object
+    kind: str
+    entity_id: str
+    evaluation_id: str
+    record_digest: str
+    record: dict
+    state: str
+    files: dict
+    run_ids: frozenset
+    actor: str
+    commit_deadline: float | None = None
 
 
 def candidate_projection(kind, item):
@@ -86,6 +104,7 @@ class QualityService:
         p = policy()
         return {"schema": "management-candidate/1", "kind": kind, "entity_id": id,
                 "candidate_digest": digest(candidate_projection(kind, snapshot)),
+                "selected_version": version_id or "draft", "current_baseline_version": item.get("current_version"),
                 "context_digest": digest({"settings": settings, "related": related,
                     "source_policy": self.store.get("access_policy", "main"),
                     "egress_policy": self.store.get("egress_policy", "main")}),
@@ -142,8 +161,9 @@ class QualityService:
         binding = self.candidate_binding(kind, id)
         records = [self.public(x) for x in self.store.list("quality_evaluation")
                    if x.get("kind") == kind and x.get("entity_id") == id and x.get("owner_id") == actor]
+        baseline = self._baseline_binding(kind, id)
         for record in records:
-            record["current"] = record.get("binding") == binding
+            record["current"] = record.get("binding") == binding and record.get("baseline_binding") == baseline
         from .release_baseline import PipelineQuality
         return {"candidate": binding, "policy": policy(), "pipeline": PipelineQuality(self.config).view(),
             "evaluations": sorted(records, key=lambda x: x.get("created_at", ""), reverse=True)[:30]}
@@ -155,14 +175,81 @@ class QualityService:
         item = snapshot.get(kind)
         return item if isinstance(item, dict) and item.get("id") == id else None
 
+    def _baseline_binding(self, kind, id):
+        item = self.config.require(kind, id)
+        version = item.get("current_version")
+        return self.candidate_binding(kind, id, version_id=version) if version else None
+
     def _input_key(self, run):
-        request = run.get("_request") or {}
-        excluded = {"client_request_id", "owner_id", "model_id", "skill_id", "server_id", "skill_version", "config_version", "quality_binding"}
-        # These are server-frozen execution inputs, not a user-submitted score.
-        request = {key: value for key, value in request.items() if key not in excluded}
-        return digest({"purpose": run.get("purpose"), "request": request,
-            "target": run.get("target"), "analysis_start": run.get("analysis_start"),
-            "analysis_end": run.get("analysis_end"), "inputs": run.get("inputs", {})})
+        """Identify the server-fixed payload actually consumed by each test."""
+        purpose = run.get("purpose")
+        if purpose == "model_test":
+            # _model_test always sends this fixed protocol, not arbitrary
+            # request inputs, display labels, or client tracing metadata.
+            inputs = {"protocol": "fixed-chinese-tool-protocol/1"}
+        elif purpose == "tool_test":
+            request = run.get("_request") or {}
+            inputs = {"tool_name": request.get("tool_name"), "arguments": request.get("arguments", {})}
+        else:
+            context = copy.deepcopy(run.get("analysis_context") or {})
+            context.pop("captured_at", None)  # Generated anew for identical cases.
+            history = copy.deepcopy(run.get("history_context") or {})
+            history.pop("previous_run_id", None)
+            for prior in history.get("rounds", []):
+                prior.pop("run_id", None)
+                for message in prior.get("user_messages", []):
+                    message.pop("id", None)
+            materials = [{k: copy.deepcopy(v) for k, v in item.items() if k != "attachment_id"}
+                         for item in run.get("user_materials", [])]
+            inputs = {"inputs": {k: copy.deepcopy(v) for k, v in (run.get("inputs") or {}).items() if k != "message"},
+                "target": run.get("target"), "incident_id": run.get("incident_id"), "environment": run.get("environment"),
+                "analysis_start": run.get("analysis_start"), "analysis_end": run.get("analysis_end"),
+                "analysis_context": context, "history_context": history, "user_materials": materials,
+                "messages": [str(m.get("content", ""))[:2000] for m in run.get("messages", []) if m.get("role") == "user"][-6:]}
+        return digest({"purpose": purpose, "inputs": inputs})
+
+    def _evaluation_state(self, kind, id, run_ids, actor, *, include_pipeline=True):
+        """Database-only optimistic token. Never hash files while holding Store."""
+        state = {}
+        for category in ("model", "mcp", "skill"):
+            selected = []
+            for entity in self.store.list(category):
+                if category == kind and entity["id"] == id:
+                    selected.append({"id": entity["id"], "revision": entity.get("revision")})
+                elif entity.get("current_version"):
+                    snapshot = self.config.published(entity)
+                    selected.append({"id": entity["id"], "current_version": entity["current_version"],
+                        "enabled": entity.get("enabled"), "blocked": entity.get("blocked"),
+                        "fields": {k: snapshot.get(k) for k in FIELDS[category]}})
+            state[category] = selected
+        for category in ("settings", "access_policy", "egress_policy", "restore_guard"):
+            state[category] = self.store.get(category, "main")
+        state["actor"] = self.store.get("user", actor)
+        state["secrets"] = [(r["id"], r.get("revision"), r.get("revoked")) for r in self.store.list("secret")]
+        if include_pipeline:
+            state["pipeline"] = [(r["id"], r.get("revision")) for r in self.store.list("quality_pipeline")]
+        runs = self.store.list("run")
+        selected_runs = [r for r in runs if r["id"] in run_ids]
+        state["runs"] = selected_runs
+        cases = {(digest(r.get("quality_binding")), self._input_key(r)) for r in selected_runs}
+        bindings = {key[0] for key in cases}
+        purposes = {r.get("purpose") for r in selected_runs}
+        first = {}
+        for run in runs:
+            if (resource_owner(run) != actor or run.get("purpose") not in purposes
+                    or digest(run.get("quality_binding")) not in bindings):
+                continue
+            key = (digest(run.get("quality_binding")), self._input_key(run))
+            if key not in cases:
+                continue
+            order = (run.get("created_at", ""), run["id"])
+            if key not in first or order < first[key]:
+                first[key] = order
+        state["first_attempts"] = sorted((key, value) for key, value in first.items())
+        for category in ("invocation", "material_read"):
+            state[category] = [(r["id"], r.get("revision")) for r in self.store.list(category) if r.get("run_id") in run_ids]
+        state["events"] = {rid: self.store.events(rid) for rid in sorted(run_ids)}
+        return digest(state)
 
     def _evidence(self, run):
         hashes, valid = [], True
@@ -197,7 +284,8 @@ class QualityService:
         same = [r for r in self.store.list("run") if resource_owner(r) == actor and r.get("purpose") == PURPOSES[kind]
                 and r.get("quality_binding") == expected and self._input_key(r) == self._input_key(run)]
         first = min(same, key=lambda x: (x.get("created_at", ""), x["id"])) if same else None
-        check("original_first_attempt", bool(first) and first["id"] == run["id"])
+        check("original_first_attempt", bool(first) and first["id"] == run["id"] and not any(
+            run.get(key) for key in ("retry_of", "retry_usage_reference", "retry_budget_semantics")))
         invocations = [x for x in self.store.list("invocation") if x.get("run_id") == run["id"]]
         model = [x for x in invocations if x.get("source") == "model"]
         source = [x for x in invocations if x.get("source") not in {None, "model"}]
@@ -250,83 +338,105 @@ class QualityService:
     def evaluate(self, kind, id, payload, *, actor="admin", authorize_run=None):
         if not isinstance(payload, dict) or set(payload) - {"expected_revision", "candidate_run_ids", "baseline_run_ids"}:
             raise ConfigError("质量评价只接受修订号和服务端试运行标识", "quality_payload_invalid")
-        def operation():
-            item = self.config.require(kind, id)
-            if payload.get("expected_revision") != item["revision"]:
-                raise StoreConflict("评价时草稿已变化，请重新读取")
-            groups = {}
-            for name in ("candidate_run_ids", "baseline_run_ids"):
-                ids = payload.get(name, [])
-                if not isinstance(ids, list) or len(ids) > 20 or any(not isinstance(v, str) or not v or len(v) > 200 for v in ids) or len(set(ids)) != len(ids):
-                    raise ConfigError("试运行标识必须为不重复的有界列表", "quality_runs_invalid")
-                groups[name] = []
-                for rid in ids:
-                    run = self.store.get("run", rid)
-                    if not run or resource_owner(run) != actor:
-                        raise ConfigError("试运行不存在或当前不可访问", "not_found")
-                    if run.get("status") not in TERMINAL:
-                        raise ConfigError("试运行尚未结束", "quality_run_pending")
-                    if authorize_run:
-                        authorize_run(run, actor)
-                    groups[name].append(run)
-            binding = self.candidate_binding(kind, id)
-            candidates = [self._score(kind, id, run, binding, actor) for run in groups["candidate_run_ids"]]
-            baseline_binding = self.candidate_binding(kind, id, version_id=item["current_version"]) if item.get("current_version") else None
-            baselines = [self._score(kind, id, run, baseline_binding, actor) for run in groups["baseline_run_ids"]] if baseline_binding else []
-            reasons, comparisons = [], []
-            from .release_baseline import PipelineQuality
-            pipeline = PipelineQuality(self.config).view()
-            if not pipeline["eligible"]:
-                reasons.append("pipeline_not_verified")
-            if not candidates:
-                reasons.append("candidate_not_executed")
-            if any(x["failed"] or x["unknown"] for x in candidates):
-                reasons.append("candidate_critical_check_failed_or_unknown")
-            if baseline_binding:
-                if not baselines or any(x["failed"] or x["unknown"] for x in baselines):
-                    reasons.append("baseline_not_verified")
-                old = {x["input_digest"]: x for x in baselines}
-                new = {x["input_digest"]: x for x in candidates}
-                if len(old) != len(baselines) or len(new) != len(candidates) or set(old) != set(new):
-                    reasons.append("case_denominator_or_input_mismatch")
-                for key in old.keys() & new.keys():
-                    before, after = old[key], new[key]
-                    comparable = before["source_digest"] == after["source_digest"]
-                    regressions = [c["id"] for c in after["checks"] if c["status"] != "passed" and any(b["id"] == c["id"] and b["status"] == "passed" for b in before["checks"])]
-                    resource_regression = False
-                    for metric, ceiling in (("elapsed_seconds", THRESHOLDS["max_duration_ratio"]),):
-                        a, b = after["metrics"][metric], before["metrics"][metric]
-                        if a is not None and b is not None and b >= 1 and a > b * ceiling:
-                            resource_regression = True
-                    a = sum(after["metrics"][k] or 0 for k in ("input_tokens", "output_tokens"))
-                    b = sum(before["metrics"][k] or 0 for k in ("input_tokens", "output_tokens"))
-                    if b and a > b * THRESHOLDS["max_token_ratio"]:
+        run_ids = set()
+        for name in ("candidate_run_ids", "baseline_run_ids"):
+            ids = payload.get(name, [])
+            if not isinstance(ids, list) or len(ids) > 20 or any(not isinstance(v, str) or not v or len(v) > 200 for v in ids) or len(set(ids)) != len(ids):
+                raise ConfigError("试运行标识必须为不重复的有界列表", "quality_runs_invalid")
+            run_ids.update(ids)
+        state_before = self.store.atomic(lambda: self._evaluation_state(kind, id, run_ids, actor))
+        item = self.config.require(kind, id)
+        if payload.get("expected_revision") != item["revision"]:
+            raise StoreConflict("评价时草稿已变化，请重新读取")
+        groups = {}
+        for name in ("candidate_run_ids", "baseline_run_ids"):
+            ids = payload.get(name, [])
+            if not isinstance(ids, list) or len(ids) > 20 or any(not isinstance(v, str) or not v or len(v) > 200 for v in ids) or len(set(ids)) != len(ids):
+                raise ConfigError("试运行标识必须为不重复的有界列表", "quality_runs_invalid")
+            groups[name] = []
+            for rid in ids:
+                run = self.store.get("run", rid)
+                if not run or resource_owner(run) != actor:
+                    raise ConfigError("试运行不存在或当前不可访问", "not_found")
+                if run.get("status") not in TERMINAL:
+                    raise ConfigError("试运行尚未结束", "quality_run_pending")
+                if authorize_run:
+                    authorize_run(run, actor)
+                groups[name].append(run)
+        binding = self.candidate_binding(kind, id)
+        candidates = [self._score(kind, id, run, binding, actor) for run in groups["candidate_run_ids"]]
+        baseline_binding = self.candidate_binding(kind, id, version_id=item["current_version"]) if item.get("current_version") else None
+        baselines = [self._score(kind, id, run, baseline_binding, actor) for run in groups["baseline_run_ids"]] if baseline_binding else []
+        reasons, comparisons = [], []
+        from .release_baseline import PipelineQuality
+        pipeline = PipelineQuality(self.config).view()
+        if not pipeline["eligible"]:
+            reasons.append("pipeline_not_verified")
+        if not candidates:
+            reasons.append("candidate_not_executed")
+        if any(x["failed"] or x["unknown"] for x in candidates):
+            reasons.append("candidate_critical_check_failed_or_unknown")
+        if baseline_binding:
+            if not baselines or any(x["failed"] or x["unknown"] for x in baselines):
+                reasons.append("baseline_not_verified")
+            old = {x["input_digest"]: x for x in baselines}
+            new = {x["input_digest"]: x for x in candidates}
+            if len(old) != len(baselines) or len(new) != len(candidates) or set(old) != set(new):
+                reasons.append("case_denominator_or_input_mismatch")
+            for key in old.keys() & new.keys():
+                before, after = old[key], new[key]
+                comparable = before["source_digest"] == after["source_digest"]
+                regressions = [c["id"] for c in after["checks"] if c["status"] != "passed" and any(b["id"] == c["id"] and b["status"] == "passed" for b in before["checks"])]
+                resource_regression = False
+                for metric, ceiling in (("elapsed_seconds", THRESHOLDS["max_duration_ratio"]),):
+                    a, b = after["metrics"][metric], before["metrics"][metric]
+                    if a is not None and b is not None and b >= 1 and a > b * ceiling:
                         resource_regression = True
-                    comparisons.append({"input_digest": key, "same_source": comparable, "critical_regressions": regressions,
-                                        "resource_regression": resource_regression, "before": before["metrics"], "after": after["metrics"]})
-                    if not comparable:
-                        reasons.append("source_snapshot_mismatch")
-                    if regressions or resource_regression:
-                        reasons.append("major_regression")
-            elif groups["baseline_run_ids"]:
-                reasons.append("bootstrap_baseline_must_be_fixed_contract")
-            record = {"schema": "management-quality/1", "kind": kind, "entity_id": id, "owner_id": actor,
-                "binding": binding, "policy": policy(), "candidate_cases": candidates, "baseline_cases": baselines,
-                "pipeline_proof_id": pipeline.get("proof_id"),
-                "baseline_kind": "actual_published_runs" if baseline_binding else "fixed_contract_first_publication",
-                "baseline_binding": baseline_binding, "comparison": comparisons,
-                "eligible": not reasons, "reasons": sorted(set(reasons)), "created_at": utcnow()}
-            rid = "quality_" + secrets.token_hex(12)
+                a = sum(after["metrics"][k] or 0 for k in ("input_tokens", "output_tokens"))
+                b = sum(before["metrics"][k] or 0 for k in ("input_tokens", "output_tokens"))
+                if b and a > b * THRESHOLDS["max_token_ratio"]:
+                    resource_regression = True
+                comparisons.append({"input_digest": key, "same_source": comparable, "critical_regressions": regressions,
+                                    "resource_regression": resource_regression, "before": before["metrics"], "after": after["metrics"]})
+                if not comparable:
+                    reasons.append("source_snapshot_mismatch")
+                if regressions or resource_regression:
+                    reasons.append("major_regression")
+        elif groups["baseline_run_ids"]:
+            reasons.append("bootstrap_baseline_must_be_fixed_contract")
+        record = {"schema": "management-quality/1", "kind": kind, "entity_id": id, "owner_id": actor,
+            "binding": binding, "policy": policy(), "candidate_cases": candidates, "baseline_cases": baselines,
+            "pipeline_proof_id": pipeline.get("proof_id"),
+            "baseline_kind": "actual_published_runs" if baseline_binding else "fixed_contract_first_publication",
+            "baseline_binding": baseline_binding, "comparison": comparisons,
+            "eligible": not reasons, "reasons": sorted(set(reasons)), "created_at": utcnow()}
+        rid = "quality_" + secrets.token_hex(12)
+        # Recompute filesystem/code-derived bindings outside the Store lock.
+        # Metadata changes during scoring or this check are caught atomically
+        # below; formal publication additionally rescans the underlying files.
+        if binding != self.candidate_binding(kind, id) or baseline_binding != self._baseline_binding(kind, id):
+            raise StoreConflict("评价期间配置或当前正式版已变化，请重新评价")
+        current_pipeline = PipelineQuality(self.config).view()
+        if current_pipeline["fingerprint"] != pipeline["fingerprint"] or current_pipeline.get("proof_id") != pipeline.get("proof_id"):
+            raise StoreConflict("评价期间固定回放证明已变化，请重新评价")
+        if authorize_run:
+            for group in groups.values():
+                for run in group:
+                    authorize_run(run, actor)
+        def save_result():
+            if self._evaluation_state(kind, id, run_ids, actor) != state_before:
+                raise StoreConflict("评价期间配置、试运行或授权记录已变化，请重新评价")
             saved = self.store.save("quality_evaluation", rid, record)
             self.config.audit("quality_evaluate", kind, id, {"evaluation_id": rid, "eligible": record["eligible"], "reasons": record["reasons"]}, actor=actor)
-            return self.public(saved)
-        return self.store.atomic(operation)
+            return saved
+        return self.public(self.store.atomic(save_result))
 
     def require_eligible(self, kind, id, evaluation_id):
         record = self.store.get("quality_evaluation", evaluation_id or "")
         if not record or record.get("kind") != kind or record.get("entity_id") != id or record.get("eligible") is not True:
             raise ConfigError("正式发布需要通过的服务端质量评价", "quality_evaluation_required")
-        if record.get("binding") != self.candidate_binding(kind, id) or record.get("policy") != policy():
+        if (record.get("binding") != self.candidate_binding(kind, id) or record.get("policy") != policy()
+                or record.get("baseline_binding") != self._baseline_binding(kind, id)):
             raise ConfigError("候选内容、依赖、策略或评价版本已变化，请重新评价", "quality_evaluation_stale")
         from .release_baseline import PipelineQuality
         pipeline = PipelineQuality(self.config).view()
@@ -344,6 +454,83 @@ class QualityService:
                 raise ConfigError("评价所引用的试运行或证据已变化", "quality_evidence_changed")
         return self.public(record)
 
+    def _publication_files(self, record):
+        """Only stat known implementation, fixed suite, CA and receipt paths."""
+        backend = Path(__file__).parent
+        root = backend.parents[1]
+        paths = {root / "scripts/evaluate_analysis.py"}
+        for directory in (backend, root / "evaluation"):
+            paths.update(path for path in directory.rglob("*")
+                         if path.is_file() and "__pycache__" not in path.parts)
+        def ca_files(server):
+            for field in ("ca_file", "tls_ca_file"):
+                if server.get(field): paths.add(Path(server[field]))
+        for server in self.store.list("mcp"):
+            ca_files(server)
+            if server.get("current_version"):
+                ca_files(self.config.published(server))
+        for case in record.get("candidate_cases", []) + record.get("baseline_cases", []):
+            run = self.store.get("run", case["run_id"])
+            for evidence in (run or {}).get("evidence", []):
+                if evidence.get("path"): paths.add(Path(evidence["path"]))
+            for server in ((run or {}).get("config_snapshot") or {}).get("mcps", []):
+                ca_files(server)
+        result = {}
+        for path in paths:
+            try:
+                def attributes(info):
+                    return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+                result[str(path)] = (attributes(path.lstat()), attributes(path.stat()))
+            except OSError:
+                result[str(path)] = None
+        return result
+
+    def prepare_eligible(self, kind, id, evaluation_id):
+        """Server-only expensive recheck before ConfigService's short commit."""
+        raw = self.store.get("quality_evaluation", evaluation_id or "")
+        if not raw:
+            raise ConfigError("正式发布需要通过的服务端质量评价", "quality_evaluation_required")
+        run_ids = frozenset(case["run_id"] for case in raw.get("candidate_cases", []) + raw.get("baseline_cases", []))
+        actor = raw.get("owner_id", "admin")
+        before = self.store.atomic(lambda: self._evaluation_state(kind, id, run_ids, actor))
+        files = self._publication_files(raw)
+        checked = self.require_eligible(kind, id, evaluation_id)
+        if (files != self._publication_files(raw)
+                or before != self.store.atomic(lambda: self._evaluation_state(kind, id, run_ids, actor))
+                or digest(raw) != digest(self.store.get("quality_evaluation", evaluation_id))):
+            raise ConfigError("发布预检期间配置、证明或文件已变化，请重新评价", "quality_evidence_changed")
+        return _PreparedQuality(self.store, kind, id, evaluation_id, digest(raw), checked, before, files, run_ids, actor)
+
+    def finalize_prepared(self, prepared):
+        """Last filesystem check, outside Store; seal a short-lived commit ticket.
+
+        Managed evidence is immutable and its DB identity participates in CAS.
+        This bounds waiting after preflight, not external filesystem mutation:
+        direct writes by another OS process are not a cross-FS/DB transaction.
+        """
+        if not isinstance(prepared, _PreparedQuality) or prepared.store is not self.store:
+            raise ConfigError("正式发布预检无效", "quality_evaluation_required")
+        if self._publication_files(prepared.record) != prepared.files:
+            raise ConfigError("发布预检后文件已变化，请重新评价", "quality_evidence_changed")
+        # Start the lease only after potentially slow discovery/stat completes.
+        return replace(prepared, commit_deadline=time.monotonic() + PUBLICATION_TICKET_SECONDS)
+
+    def verify_prepared(self, prepared, kind, id, evaluation_id):
+        # Final Store transaction: database CAS only, never walk/stat/read files.
+        # No endpoint accepts this internal object from a client.
+        if (not isinstance(prepared, _PreparedQuality) or prepared.store is not self.store
+                or (prepared.kind, prepared.entity_id, prepared.evaluation_id) != (kind, id, evaluation_id)):
+            raise ConfigError("正式发布预检无效", "quality_evaluation_required")
+        def fresh():
+            if prepared.commit_deadline is None or time.monotonic() > prepared.commit_deadline:
+                raise ConfigError("发布提交票据已过期，请重新预检", "quality_precheck_expired")
+        fresh()
+        if (digest(self.store.get("quality_evaluation", evaluation_id)) != prepared.record_digest
+                or self._evaluation_state(kind, id, prepared.run_ids, prepared.actor) != prepared.state):
+            raise ConfigError("发布预检后配置、当前正式版或证明已变化", "quality_evidence_changed")
+        fresh()
+        return copy.deepcopy(prepared.record)
+
     def public(self, record):
         return redact(copy.deepcopy(record), self.config.vault)
 
@@ -358,7 +545,7 @@ def configure_quality(app):
     @app.get("/api/quality/pipeline")
     async def pipeline_view(request: Request):
         require_admin(request)
-        return pipeline.view()
+        return await asyncio.to_thread(pipeline.view)
 
     @app.post("/api/quality/pipeline")
     async def pipeline_run(request: Request):
@@ -372,7 +559,7 @@ def configure_quality(app):
             @app.get(f"/api/{path}/{{id}}/quality", name=f"quality_{kind}")
             async def view(id: str, request: Request):
                 require_admin(request)
-                return service.view(kind, id, actor=actor_id(request))
+                return await asyncio.to_thread(service.view, kind, id, actor=actor_id(request))
 
             @app.post(f"/api/{path}/{{id}}/quality", name=f"evaluate_quality_{kind}")
             async def evaluate(id: str, request: Request):
@@ -380,6 +567,7 @@ def configure_quality(app):
                 runtime = getattr(app.state, "runtime", None)
                 if runtime is None:
                     raise ConfigError("试运行执行器尚未装配", "quality_runtime_unavailable")
-                return service.evaluate(kind, id, await request.json(), actor=actor_id(request),
+                payload = await request.json()
+                return await asyncio.to_thread(service.evaluate, kind, id, payload, actor=actor_id(request),
                     authorize_run=lambda run, owner: runtime.require_owned(run["id"], owner))
         register()
