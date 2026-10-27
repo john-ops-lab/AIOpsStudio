@@ -1,11 +1,12 @@
+import UsagePanel from "./UsagePanel";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Download, FileText, ListTree, PanelRightClose } from "lucide-react";
 import type { Entity, Run } from "../../types";
 import { dateTime } from "../../api";
 import { AnalysisContextPanel, Coverage, Report } from "../../pages/Runs";
 import { Button, Empty, JsonView, Loading, Modal, Notice, Status } from "../ui";
-import { isReportAttachment, textValue } from "./context";
-export type CanvasTab = "report" | "evidence" | "events";
+import { isReportAttachment, textValue, runTitle } from "./context";
+export type CanvasTab = "report" | "evidence" | "events" | "usage";
 export default function AnalysisCanvas({ run, runs, attachments, selected, onSelect, tab, onTab, onClose, onEvidence, loading, error }: {
   run: Run | null; runs: Run[]; attachments: Entity[]; selected: string | null; onSelect: (id: string) => void;
   tab: CanvasTab; onTab: (tab: CanvasTab) => void; onClose: () => void; onEvidence: (id: string) => void; loading: boolean; error: string;
@@ -13,20 +14,20 @@ export default function AnalysisCanvas({ run, runs, attachments, selected, onSel
   const [narrow, setNarrow] = useState(() => window.matchMedia("(max-width: 1050px)").matches);
   const tabs = useRef<HTMLDivElement>(null);
   useEffect(() => { const media = window.matchMedia("(max-width: 1050px)"); const change = () => setNarrow(media.matches); media.addEventListener("change", change); return () => media.removeEventListener("change", change); }, []);
-  const allTabs: [CanvasTab, string][] = [["report", "报告"], ["evidence", `证据 ${run?.evidence?.length || 0}`], ["events", "执行记录"]];
+  const allTabs: [CanvasTab, string][] = [["report", "报告"], ["evidence", `证据 ${run?.evidence?.length || 0}`], ["events", "执行记录"], ["usage", "用量费用"]];
   const reportFile = attachments.find((a) => a.run_id === run?.id && isReportAttachment(a));
   const content = <>
     <div ref={tabs} className="canvas-tabs" role="tablist" aria-label="分析画布内容" onKeyDown={(e) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
       e.preventDefault(); const current = allTabs.findIndex(([id]) => id === tab);
-      const next = e.key === "Home" ? 0 : e.key === "End" ? 2 : (current + (e.key === "ArrowRight" ? 1 : -1) + 3) % 3;
+      const next = e.key === "Home" ? 0 : e.key === "End" ? allTabs.length - 1 : (current + (e.key === "ArrowRight" ? 1 : -1) + allTabs.length) % allTabs.length;
       onTab(allTabs[next][0]); tabs.current?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
     }}>{allTabs.map(([id, label]) => <button key={id} id={`canvas-tab-${id}`} role="tab" aria-selected={tab === id} aria-controls="canvas-panel" tabIndex={tab === id ? 0 : -1} className={tab === id ? "active" : ""} onClick={() => onTab(id)}>{label}</button>)}</div>
     <div className="canvas-scroll" id="canvas-panel" role="tabpanel" aria-labelledby={`canvas-tab-${tab}`} tabIndex={0}>
-      <div className="canvas-round"><label className="sr-only" htmlFor="canvas-round">选择分析轮次</label><select id="canvas-round" value={selected || ""} onChange={(e) => onSelect(e.target.value)}><option value="" disabled>选择分析轮次</option>{runs.map((r, i) => <option key={r.id} value={r.id}>第 {i + 1} 轮 · {r.title || r.id}</option>)}</select>{run ? <Status value={run.status}>{run.status === "partial" ? "部分覆盖" : undefined}</Status> : null}</div>
+      <div className="canvas-round"><label className="sr-only" htmlFor="canvas-round">选择分析轮次</label><select id="canvas-round" value={selected || ""} onChange={(e) => onSelect(e.target.value)}><option value="" disabled>选择分析轮次</option>{runs.map((r, i) => <option key={r.id} value={r.id}>第 {i + 1} 轮 · {runTitle(r)}</option>)}</select>{run ? <Status value={run.status}>{run.status === "partial" ? "部分覆盖" : undefined}</Status> : null}</div>
       <Notice error={error} />
       {loading ? <Loading /> : !run ? <Empty title="尚无分析轮次" detail="发送问题并补齐上下文后，报告与证据会保存在这里。" /> : <>
-        <div className="canvas-run-meta"><h2>{run.title || "分析记录"}</h2><p>{run.analysis_start ? `${dateTime(run.analysis_start)} — ${dateTime(run.analysis_end)}` : "此轮未设置时间窗"}</p></div>
+        <div className="canvas-run-meta"><h2>{runTitle(run)}</h2><p>{run.analysis_start ? `${dateTime(run.analysis_start)} — ${dateTime(run.analysis_end)}` : "此轮未设置时间窗"}</p></div>
         {["investigation", "skill_test"].includes(run.purpose) ? <AnalysisContextPanel value={run.analysis_context} /> : null}
         {run.error ? <Notice error={textValue(run.error)} /> : null}
         {run.artifact_error || run.report_attachment_error ? <Notice error={`本轮执行已结束，但回复或报告制品保存失败：${textValue(run.artifact_error || run.report_attachment_error)}`} /> : null}
@@ -38,6 +39,7 @@ export default function AnalysisCanvas({ run, runs, attachments, selected, onSel
           <Coverage value={e.coverage} />
           <div className="actions"><Button onClick={() => onEvidence(e.id)}>查看查询<ChevronRight size={14} aria-hidden="true" /></Button><Button onClick={() => onEvidence(e.id)}>原始响应</Button></div>
         </li>)}</ol> : <Empty title="尚无已保存证据" detail="这里仅展示本轮实际留存的源系统响应。" /> : null}
+        {tab === "usage" ? <UsagePanel key={run.id} runId={run.id} active={["queued", "running"].includes(run.status)} /> : null}
         {tab === "events" ? run.events?.length ? <ol className="canvas-events">{run.events.map((event, i) => <li key={event.id || event.seq || i}><ListTree size={15} aria-hidden="true" /><div><strong>{event.type}</strong><time>{dateTime(event.created_at || event.timestamp)}</time><JsonView title="事件详情" value={event.payload ?? event} /></div></li>)}</ol> : <Empty title="尚无持久执行事件" /> : null}
       </>}
     </div>

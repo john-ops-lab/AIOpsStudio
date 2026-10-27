@@ -179,11 +179,13 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  disableClose = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  disableClose?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -205,14 +207,14 @@ export function Modal({
       ref={ref}
       className={`modal ${wide ? "wide" : ""}`}
       aria-labelledby={titleId}
-      onCancel={onClose}
+      onCancel={(event) => { event.preventDefault(); if (!disableClose) onClose(); }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!disableClose && event.target === event.currentTarget) onClose();
       }}
     >
       <div className="modal-head">
         <h2 id={titleId}>{title}</h2>
-        <Button variant="ghost" aria-label="关闭对话框" onClick={onClose}>
+        <Button variant="ghost" aria-label="关闭对话框" disabled={disableClose} onClick={onClose}>
           <X size={18} />
         </Button>
       </div>

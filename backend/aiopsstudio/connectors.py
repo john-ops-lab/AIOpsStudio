@@ -14,7 +14,8 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
-from jsonschema import Draft202012Validator
+
+from .schema_safety import check_local_schema, offline_validator
 
 
 class ConnectorError(RuntimeError):
@@ -84,6 +85,16 @@ def tool_alias(server_id: str, name: str) -> str:
     stem = re.sub(r"[^A-Za-z0-9_-]", "_", name)[:42]
     suffix = hashlib.sha256(f"{server_id}\0{name}".encode()).hexdigest()[:16]
     return f"mcp_{stem}_{suffix}"
+
+
+def _check_tool_schema(item):
+    # A remote schema may describe data, never trigger remote $ref retrieval.
+    try:
+        for key in ("inputSchema", "outputSchema"):
+            if item.get(key) is not None:
+                check_local_schema(item[key])
+    except Exception:
+        raise ConnectorError("工具目录包含无效或远程引用的 JSON Schema", "catalog_schema_invalid") from None
 
 
 def _tls(config: dict) -> ssl.SSLContext:
@@ -158,6 +169,7 @@ async def mcp_discover(config: dict, vault, request_observer=None) -> dict:
                 result = await session.list_tools(cursor=cursor)
                 for source in result.tools:
                     item = source.model_dump(mode="json", by_alias=True, exclude_none=True)
+                    _check_tool_schema(item)
                     if any(t["name"] == item["name"] for t in items):
                         raise ConnectorError("工具目录包含重复名称", "catalog_invalid")
                     item.update(alias=tool_alias(key, item["name"]), definition_digest=tool_digest(item))
@@ -189,12 +201,19 @@ def permitted_tool(config: dict, tool_name: str) -> dict:
 
 async def mcp_call(config: dict, vault, tool_name: str, arguments: dict, request_observer=None) -> dict:
     frozen = permitted_tool(config, tool_name)
-    Draft202012Validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
+    offline_validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
     async with _session(config, vault, request_observer) as (session, initialized):
         # A fresh connection must recheck remote definitions before dispatch.
-        cursor, found, seen = None, None, set()
+        cursor, found, seen, names = None, None, set(), set()
         for _ in range(50):
             listing = await session.list_tools(cursor=cursor)
+            for tool in listing.tools:
+                if tool.name in names:
+                    raise ConnectorError("工具目录包含重复名称，停止调用", "catalog_invalid")
+                names.add(tool.name)
+                _check_tool_schema(tool.model_dump(mode="json", by_alias=True))
+            if len(names) > 1000:
+                raise ConnectorError("工具目录超过平台上限，停止调用", "catalog_limit")
             found = next((t for t in listing.tools if t.name == tool_name), found)
             cursor = listing.nextCursor
             if not cursor:

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import HistorySidebar from "./components/workbench/HistorySidebar";
+import { lazy, Suspense, useDeferredValue, useEffect, useRef, useState } from "react";
 import { Activity, ArrowLeft, Bell, Blocks, Bot, ChevronDown, FileClock, LayoutDashboard, LogOut, Menu, MessageSquare, Network, Plus, Search, ShieldCheck, UsersRound, X } from "lucide-react";
 import { api, list, post, requestId, useAction, useResource } from "./api";
 import type { Conversation, Entity, Page, Run, RunPreset, User } from "./types";
@@ -24,8 +25,9 @@ function Login({ onLogin }: { onLogin: (session: Entity) => void }) {
   return <main className="login-screen"><div className="login-brand"><span className="aiopsstudio-mark">A</span><span>AIOpsStudio</span></div><form className="login-form" onSubmit={(e) => { e.preventDefault(); void state.act("login", async () => { await post("/login", { username, password }); setPassword(""); onLogin(await api("/session")); }); }}><div className="login-symbol"><ShieldCheck size={27} /></div><h1>登录运维工作台</h1><p>使用你的 AIOpsStudio 账号继续。</p><Notice error={state.error} /><Field label="用户名" required><input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required /></Field><Field label="密码" required><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required /></Field><Button variant="primary" type="submit" busy={Boolean(state.busy)}>登录工作台</Button><small>只读分析 · 会话与报告持续保存</small></form></main>;
 }
 function GlobalSearch({ query, onClose, onNavigate }: { query: string; onClose: () => void; onNavigate: (page: Page, id?: string) => void }) {
-  const conversations = useResource("/conversations"), runs = useResource("/runs"), skills = useResource("/skills"), mcps = useResource("/mcp-servers");
   const [text, setText] = useState(query);
+  const deferred = useDeferredValue(text);
+  const conversations = useResource(`/conversations?search=${encodeURIComponent(deferred)}&limit=50`), runs = useResource("/runs"), skills = useResource("/skills"), mcps = useResource("/mcp-servers");
   const results = [
     ...list(conversations.data).map((x) => ({ id: x.id, page: "workbench" as Page, label: x.title || x.id, kind: "会话" })),
     ...list(runs.data).map((x) => ({ id: x.id, page: "runs" as Page, label: x.title || x.id, kind: "分析记录" })),
@@ -37,7 +39,8 @@ function GlobalSearch({ query, onClose, onNavigate }: { query: string; onClose: 
 function Shell({ session, onLogout }: { session: Entity; onLogout: () => void }) {
   const navPanel = useRef<HTMLElement>(null);
   const [current, setCurrent] = useState(route), [newRun, setNewRun] = useState<RunPreset | null>(null), [menu, setMenu] = useState(false), [search, setSearch] = useState(""), [searchOpen, setSearchOpen] = useState(false), [starter, setStarter] = useState<{ id: string; message: string } | null>(null), [draftReset, setDraftReset] = useState(0);
-  const conversations = useResource("/conversations", 6000), action = useAction();
+  const [historyRevision, setHistoryRevision] = useState(0), action = useAction();
+  const refreshHistory = () => setHistoryRevision((value) => value + 1);
   const user: User = typeof session.user === "object" ? session.user : { id: "admin", username: String(session.user || "admin"), name: String(session.user || "admin"), role: "admin" };
   const isAdmin = user.role === "admin", name = user.name || user.username;
   useEffect(() => { const onHash = () => { setCurrent(route()); setMenu(false); }; window.addEventListener("hashchange", onHash); return () => window.removeEventListener("hashchange", onHash); }, []);
@@ -49,7 +52,7 @@ function Shell({ session, onLogout }: { session: Entity; onLogout: () => void })
     void action.act("conversation", async () => {
       const { message, title, ...context } = preset;
       const result = await post<Conversation>("/conversations", { title, context, client_request_id: requestId() });
-      setStarter({ id: result.id, message: message || "" }); navigate("workbench", result.id); await conversations.reload();
+      setStarter({ id: result.id, message: message || "" }); navigate("workbench", result.id); refreshHistory();
     });
   }
   const item = nav.find((n) => n.id === current.page) || { id: current.page, label: current.page === "users" ? "账号管理" : "分析记录", icon: current.page === "users" ? UsersRound : FileClock };
@@ -58,13 +61,13 @@ function Shell({ session, onLogout }: { session: Entity; onLogout: () => void })
     <a className="skip-link" href="#main-content" onClick={(e) => { e.preventDefault(); document.getElementById("main-content")?.focus(); }}>跳转到主内容</a>
     {menu ? <button className="sidebar-scrim" onClick={() => setMenu(false)} aria-label="收起导航" /> : null}
     <aside ref={navPanel} className={`sidebar ${menu ? "open" : ""}`}><a className="brand" href="#workbench" onClick={() => navigate("workbench")}><span className="aiopsstudio-mark">A</span><span>AIOpsStudio</span></a><nav aria-label="主导航">{nav.map((n) => <button key={n.id} className={current.page === n.id || (current.page === "runs" && n.id === "workbench") ? "active" : ""} onClick={() => navigate(n.id)} aria-current={current.page === n.id ? "page" : undefined}><n.icon size={19} strokeWidth={1.7} aria-hidden="true" /><span>{n.label}</span></button>)}</nav>
-      <div className="conversation-nav"><Button className="new-conversation" onClick={() => { setStarter(null); setDraftReset((n) => n + 1); navigate("workbench"); }}><Plus size={17} />新建会话</Button><div className="history-label">最近会话</div><Notice error={conversations.error} /><div className="conversation-history">{conversations.loading ? <span className="history-empty">正在加载…</span> : list(conversations.data).length ? <ul>{list(conversations.data).map((c) => <li key={c.id}><button className={workbench && current.id === c.id ? "selected" : ""} onClick={() => navigate("workbench", c.id)} aria-current={workbench && current.id === c.id ? "page" : undefined}><MessageSquare size={16} aria-hidden="true" /><span>{c.title || "未命名会话"}</span></button></li>)}</ul> : <span className="history-empty">尚无已保存会话</span>}</div></div>
+      <div className="conversation-nav"><Button className="new-conversation" onClick={() => { setStarter(null); setDraftReset((n) => n + 1); navigate("workbench"); }}><Plus size={17} />新建会话</Button><HistorySidebar selected={workbench ? current.id : null} onSelect={(id) => navigate("workbench", id)} revision={historyRevision} /></div>
       <div className="sidebar-user"><span className="avatar">{name.slice(0, 1).toUpperCase()}</span><div><strong>{name}</strong><small>{isAdmin ? "管理员" : "运维用户"}</small></div><details><summary aria-label="账号操作"><ChevronDown size={16} /></summary><div className="account-popover">{isAdmin ? <button onClick={() => navigate("users")}><UsersRound size={15} />账号管理</button> : null}<button onClick={() => void action.act("logout", async () => { await post("/logout"); onLogout(); })}><LogOut size={15} />退出登录</button></div></details></div>
     </aside>
     <div className="app-content"><header className="topbar"><div className="breadcrumb"><Button className="mobile-menu" variant="ghost" onClick={() => setMenu(!menu)} aria-label={menu ? "收起导航" : "展开导航"} aria-expanded={menu}>{menu ? <X size={19} /> : <Menu size={19} />}</Button><item.icon size={16} aria-hidden="true" /><span>{item.label}</span></div><div className="topbar-actions"><form className="global-search" onSubmit={(e) => { e.preventDefault(); setSearchOpen(true); }}><Search size={15} aria-hidden="true" /><input aria-label="全局搜索" placeholder="搜索会话、分析、Skill…" value={search} onChange={(e) => setSearch(e.target.value)} /><kbd>↵</kbd></form><span className="topbar-identity"><span className="avatar">{name.slice(0, 1).toUpperCase()}</span><span>{name}</span></span></div></header>
       <Notice error={action.error} />
       <div id="main-content" className={`page-content ${workbench ? "workbench-page" : ""}`} tabIndex={-1}><Suspense fallback={<Loading />}>
-        {workbench ? <Workbench key={draftReset} selected={current.id} initialMessage={starter?.id === current.id ? starter.message : ""} onSelect={(id) => navigate("workbench", id)} onChanged={() => void conversations.reload()} /> : null}
+        {workbench ? <Workbench key={draftReset} selected={current.id} initialMessage={starter?.id === current.id ? starter.message : ""} onSelect={(id) => navigate("workbench", id)} onChanged={refreshHistory} /> : null}
         {current.page === "runs" ? <Runs selected={current.id} onSelect={(id) => navigate("runs", id)} /> : null}
         {current.page === "alerts" ? <Alerts onInvestigate={beginAnalysis} /> : null}
         {current.page === "skills" ? isAdmin ? <Skills initialId={current.id} onRun={beginAnalysis} /> : <Catalog kind="skills" initialId={current.id} onAnalyze={beginAnalysis} /> : null}

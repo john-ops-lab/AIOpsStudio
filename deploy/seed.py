@@ -101,7 +101,7 @@ def local_origin(url):
 
 
 def apply_bootstrap(client, body):
-    """发现/发布配置仍走正式管理 API；同名已发布项保留现有内容。"""
+    """导入草稿仍走管理 API；正式发布须由工作台完成质量门槛。"""
     def api(method, path, payload=None):
         response = client.request(method, "/api" + path, json=payload)
         if not response.is_success:
@@ -111,7 +111,7 @@ def apply_bootstrap(client, body):
     servers = {x["name"]: x for x in api("GET", "/mcp-servers")["items"]}
     models = {x["name"]: x for x in api("GET", "/model-configs")["items"]}
     skills = {x["name"]: x for x in api("GET", "/skills")["items"]}
-    result = {"created": 0, "published": 0, "preserved_existing": 0}
+    result = {"created": 0, "published": 0, "drafts": 0, "preserved_existing": 0, "default_model_pending": False}
     for definition in body["mcp_servers"]:
         name = definition["name"]
         if name in servers:
@@ -130,8 +130,8 @@ def apply_bootstrap(client, body):
         for tool in tools:
             tool["readonly"] = tool["name"] in wanted
         server = api("PUT", f"/mcp-servers/{server['id']}", {"expected_revision": server["revision"], "tools": tools, "allowed_tools": wanted})
-        servers[name] = api("POST", f"/mcp-servers/{server['id']}/publish", {"expected_revision": server["revision"]})
-        result["published"] += 1
+        servers[name] = server
+        result["drafts"] += 1
     for definition in body["model_configs"]:
         name = definition["name"]
         if name in models:
@@ -141,14 +141,17 @@ def apply_bootstrap(client, body):
             continue
         model = api("POST", "/model-configs", definition)
         result["created"] += 1
-        models[name] = api("POST", f"/model-configs/{model['id']}/publish", {"expected_revision": model["revision"]})
-        result["published"] += 1
+        models[name] = model
+        result["drafts"] += 1
     settings = body["settings"]
     if body.get("default_model_name"):
         model = models.get(body["default_model_name"])
         if not model:
             raise ValueError("default_model_name 未匹配已有或本次导入的模型配置")
-        settings = {**settings, "default_model_id": model["id"]}
+        if model.get("current_version"):
+            settings = {**settings, "default_model_id": model["id"]}
+        else:
+            result["default_model_pending"] = True
     if settings:
         current = api("GET", "/settings")
         api("PUT", "/settings", {**settings, "expected_revision": current["revision"]})
@@ -168,8 +171,8 @@ def apply_bootstrap(client, body):
                 dependency["server_id"] = servers[server_name]["id"]
         skill = api("POST", "/skills", definition)
         result["created"] += 1
-        skills[name] = api("POST", f"/skills/{skill['id']}/publish", {"expected_revision": skill["revision"]})
-        result["published"] += 1
+        skills[name] = skill
+        result["drafts"] += 1
     return result
 
 

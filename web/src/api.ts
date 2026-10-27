@@ -55,7 +55,7 @@ export const list = (data: unknown): Entity[] =>
       : [];
 export function invalidatesResource(error: unknown): boolean {
   return error instanceof ApiError && ([401, 403, 404].includes(error.status)
-    || error.status === 503 && Boolean(error.code?.startsWith("policy_missing") || error.code?.startsWith("policy_unavailable")));
+    || error.status === 503 && Boolean(error.code === "restore_unverified" || error.code?.startsWith("policy_missing") || error.code?.startsWith("policy_unavailable")));
 }
 export function useResource<T = Entity>(path: string | null, interval = 0) {
   const [data, setData] = useState<T | null>(null),

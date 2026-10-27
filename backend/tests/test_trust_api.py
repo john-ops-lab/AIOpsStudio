@@ -1,3 +1,4 @@
+from m2_management_fixtures import legacy_publication
 """Mac-local API contracts, synthetic data only and no worker/source requests."""
 import copy
 import base64
@@ -289,14 +290,14 @@ def test_operator_configuration_selection_never_exposes_unrelated_connections_or
     # A fixed synthetic discovery receipt exercises metadata publication only;
     # no request or real source acceptance is implied by this fixture.
     source = api.store.save("mcp", source["id"], {**source, "discovery": {"complete": True, "synthetic": True}})
-    source = config.publish("mcp", source["id"], source["revision"])
+    source = legacy_publication(config, "mcp", source)
     model = config.save("model", {"name": "合成可选模型", "model": "selection-model", "base_url": "https://unrelated-provider.invalid/v1",
         "secret_value": "synthetic-provider-selection-secret"})
-    model = config.publish("model", model["id"], model["revision"])
+    model = legacy_publication(config, "model", model)
     skill = config.save("skill", {"name": "operator-selection", "display_name": "合成可选方法",
         "content": "---\nname: operator-selection\ndescription: 合成方法\n---\n固定方法正文。",
         "references": {"references/private.md": "UNRELATED_PRIVATE_SKILL_REFERENCE"}})
-    skill = config.publish("skill", skill["id"], skill["revision"])
+    skill = legacy_publication(config, "skill", skill)
     settings = api.store.get("settings", "main")
     settings.update(identity_mapping={"unrelated-source": {"native_id": "UNRELATED_NATIVE_ID_MARKER"}},
         query_catalog={"private-query": "UNRELATED_QUERY_BODY_MARKER"},

@@ -1,3 +1,4 @@
+import { runTitle } from "../components/workbench/context";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -369,7 +370,7 @@ function RunDetail({
       {artifactFailure ? <Notice error={`回复或报告制品保存失败：${readable(artifactFailure)}`} /> : null}
       <header className="run-heading">
         <div>
-          <h1>{run.title || run.id}</h1>
+          <h1>{runTitle(run)}</h1>
           <div className="run-identifier">
             {run.incident_id
               ? `#${run.incident_id}`
@@ -394,11 +395,12 @@ function RunDetail({
               onClick={() => void command("retry")}
               busy={state.busy === "retry"}
             >
-              重新运行
+              新一轮重试
             </Button>
           ))}
         </div>
       </header>
+      {!active && !run.legacy_archive ? <p className="scope-note">重试保留原轮次的配置快照并重新检查当前权限，创建独立预算的新一轮；原轮次用量和结果保留。</p> : null}
       <div className="run-meta">
         <span>
           <Layers3 size={15} />

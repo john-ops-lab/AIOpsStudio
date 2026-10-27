@@ -4,16 +4,21 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
 import secrets
+import shutil
+import tempfile
+import time
+from datetime import date
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
-from jsonschema import Draft202012Validator
 import yaml
 
+from .schema_safety import check_local_schema
 from .store import Store, StoreConflict, utcnow
 
 
@@ -144,7 +149,7 @@ class ConfigService:
             defaults = {
                 "skill": {"name": "", "display_name": "", "description": "", "content": "", "references": {}, "input_schema": {"type": "object"}, "dependencies": []},
                 "mcp": {"name": "", "url": "", "auth_type": "none", "secret_id": None, "auth_header": "Authorization", "timeout_seconds": 30, "allowed_tools": [], "tools": [], "transport": "streamable_http", "ca_file": None, "tls_ca_file": None, "headers": {}, "verify_tls": True, "max_response_bytes": 1048576},
-                "model": {"name": "", "provider": "openai", "model": "", "base_url": "https://api.openai.com/v1", "secret_id": None, "temperature": None, "max_tokens": 2048, "extra_body": {}, "default_headers": {}},
+                "model": {"name": "", "provider": "openai", "model": "", "base_url": "https://api.openai.com/v1", "secret_id": None, "temperature": None, "max_tokens": 2048, "extra_body": {}, "default_headers": {}, "pricing": None},
             }[kind]
             fields = set(defaults)
             base = {**defaults, **base}
@@ -165,6 +170,8 @@ class ConfigService:
                         raise ConfigError("不能改写已发现工具定义，请重新发现目录")
             if kind == "mcp" and previous and any(base.get(k) != previous.get(k) for k in ("url", "auth_type", "auth_header", "secret_id", "ca_file", "tls_ca_file", "headers")):
                 base["discovery"] = {"complete": False, "reason": "connection_changed", "checked_at": utcnow()}
+            if kind == "mcp" and previous and any(base.get(k) != previous.get(k) for k in ("transport", "verify_tls")):
+                base["discovery"] = {"complete": False, "reason": "connection_changed", "checked_at": utcnow()}
             base["status"] = "draft"
             base.pop("validation", None)
             self._basic(kind, base)
@@ -183,15 +190,19 @@ class ConfigService:
             if not isinstance(refs, dict) or len(refs) > 32:
                 raise ConfigError("参考文件必须为字典且不超过 32 个")
             for path, content in refs.items():
+                if not isinstance(path, str) or len(path) > 256 or re.search(r"[\x00-\x1f\x7f]", path):
+                    raise ConfigError("参考文件路径格式无效")
                 p = PurePosixPath(path)
-                if not path.startswith("references/") or p.is_absolute() or ".." in p.parts or "\\" in path or not isinstance(content, str) or len(content.encode()) > 262144:
+                if not path.startswith("references/") or p.as_posix() != path or path.endswith("/") or p.is_absolute() or ".." in p.parts or "\\" in path or not isinstance(content, str) or len(content.encode()) > 262144:
                     raise ConfigError("参考文件路径必须位于 references/ 内且为不超过 256 KiB 的文本")
+            if any(any(other.startswith(path + "/") for other in refs) for path in refs):
+                raise ConfigError("参考文件路径不能同时作为另一文件的目录")
             if sum(len(c.encode()) for c in refs.values()) > 1048576:
                 raise ConfigError("参考文件总大小不能超过 1 MiB")
             if not isinstance(item["dependencies"], list):
                 raise ConfigError("依赖必须为列表")
             try:
-                Draft202012Validator.check_schema(item["input_schema"])
+                self._local_schema(item["input_schema"])
             except Exception:
                 raise ConfigError("输入 JSON Schema 无效") from None
         elif kind == "mcp":
@@ -222,9 +233,13 @@ class ConfigService:
                 raise ConfigError("响应保存上限必须在 1 KiB 至 10 MiB 之间")
             if not isinstance(item["tools"], list) or any(not isinstance(t, dict) or not isinstance(t.get("name"), str) for t in item["tools"]):
                 raise ConfigError("工具目录必须为含名称的对象列表")
+            if len({t["name"] for t in item["tools"]}) != len(item["tools"]) or len(set(item["allowed_tools"])) != len(item["allowed_tools"]):
+                raise ConfigError("工具名称或白名单不能重复")
             for tool in item["tools"]:
                 try:
-                    Draft202012Validator.check_schema(tool.get("inputSchema", {"type": "object"}))
+                    self._local_schema(tool.get("inputSchema", {}))
+                    if tool.get("outputSchema") is not None:
+                        self._local_schema(tool["outputSchema"])
                 except Exception:
                     raise ConfigError("工具输入 JSON Schema 无效") from None
         else:
@@ -239,11 +254,34 @@ class ConfigService:
                 raise ConfigError("模型附加参数与请求头必须为对象")
             self._reject_embedded_secrets(item["extra_body"])
             for key, value in item["default_headers"].items():
-                if not isinstance(value, str) or "\r" in value or "\n" in value or key.lower() in _SENSITIVE_KEYS | {"host", "connection", "content-length"}:
+                if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,64}", key) or not isinstance(value, str) or "\r" in value or "\n" in value or key.lower() in _SENSITIVE_KEYS | {"host", "connection", "content-length"}:
                     raise ConfigError("模型附加请求头无效，认证必须使用凭据引用")
             temp = item.get("temperature")
             if temp is not None and (not isinstance(temp, (int, float)) or not 0 <= temp <= 2):
                 raise ConfigError("temperature 必须为空或 0 至 2")
+            pricing = item.get("pricing")
+            if pricing is not None:
+                keys = {"input_per_million", "output_per_million", "cached_input_per_million", "currency", "as_of", "version"}
+                if not isinstance(pricing, dict) or set(pricing) - keys or not {"input_per_million", "output_per_million", "currency", "as_of", "version"} <= set(pricing):
+                    raise ConfigError("单价须包含输入/输出单价、币种、日期和版本")
+                for field in keys & set(pricing) - {"currency", "as_of", "version"}:
+                    value = pricing[field]
+                    if type(value) not in {int, float} or not math.isfinite(value) or not 0 <= value <= 1000000:
+                        raise ConfigError("模型单价必须为有界非负有限数值")
+                if not isinstance(pricing["currency"], str) or not re.fullmatch(r"[A-Z]{3}", pricing["currency"]) or not isinstance(pricing["version"], str) or not 1 <= len(pricing["version"]) <= 100:
+                    raise ConfigError("单价币种或版本格式无效")
+                try:
+                    if date.fromisoformat(pricing["as_of"]).isoformat() != pricing["as_of"]:
+                        raise ValueError()
+                except (TypeError, ValueError):
+                    raise ConfigError("单价日期必须为 YYYY-MM-DD") from None
+
+    @staticmethod
+    def _local_schema(schema):
+        try:
+            check_local_schema(schema)
+        except Exception:
+            raise ConfigError("JSON Schema 无效或包含非本地引用") from None
 
     def validate(self, kind, item):
         errors, warnings = [], []
@@ -302,6 +340,12 @@ class ConfigService:
                         tool = next((t for t in snapshot.get("tools", []) if t.get("name") == tool_name), None)
                         if tool_name not in snapshot.get("allowed_tools", []) or not tool or tool.get("readonly") is not True:
                             problem = "依赖工具未明确开放为只读：" + str(tool_name)
+                        elif dep.get("definition_digest"):
+                            from .connectors import tool_digest
+                            if dep["definition_digest"] != tool_digest(tool):
+                                problem = "依赖工具定义摘要已变化：" + str(tool_name)
+                        if dep.get("version_id") and dep["version_id"] != server.get("current_version"):
+                            problem = "依赖 MCP 发布版本已变化：" + str(dep.get("server_id"))
                     if problem:
                         (errors if dep.get("required", True) and not dep.get("optional", False) else warnings).append(problem)
             elif kind == "mcp":
@@ -333,45 +377,153 @@ class ConfigService:
             raise ConfigError("指定发布版本不存在")
         return copy.deepcopy(version["snapshot"])
 
-    def publish(self, kind, id, expected_revision=None):
+    def _artifact_state(self, directory):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ConfigError("不可变 Skill 制品目录无效")
+        root = self.artifact_dir.resolve()
+        result = {}
+        for path in [directory, *directory.rglob("*")]:
+            if path.is_symlink() or not path.resolve().is_relative_to(root):
+                raise ConfigError("Skill 制品包含符号链接或越界路径")
+            info = path.stat()
+            result[path.relative_to(directory).as_posix()] = (info.st_dev, info.st_ino, info.st_mode,
+                info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        return result
+
+    def _prepare_skill_artifact(self, snapshot, item):
+        root = self.artifact_dir.resolve()
+        directory = root / snapshot["artifact_digest"]
+        files = {"SKILL.md": item["content"], **item["references"]}
+        if directory.exists() or directory.is_symlink():
+            before = self._artifact_state(directory)
+            existing = {path.relative_to(directory).as_posix(): path.read_text(encoding="utf-8")
+                        for path in directory.rglob("*") if path.is_file()}
+            if existing != files or before != self._artifact_state(directory):
+                raise ConfigError("不可变 Skill 制品内容冲突")
+            return {"directory": directory, "stage": None, "state": before}
+        stage = Path(tempfile.mkdtemp(prefix=".skill-", dir=root))
+        try:
+            for name, content in files.items():
+                target = stage / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("x", encoding="utf-8") as stream:
+                    stream.write(content)
+                target.chmod(0o444)
+            return {"directory": directory, "stage": stage, "state": self._artifact_state(stage)}
+        except BaseException:
+            shutil.rmtree(stage)
+            raise
+
+    def _check_prepared_skill_artifact(self, prepared):
+        # All discovery and recursive metadata IO happens before Store.atomic.
+        directory, stage = prepared["directory"], prepared["stage"]
+        if self._artifact_state(stage or directory) != prepared["state"]:
+            raise ConfigError("Skill 制品准备后已变化")
+        if stage is not None and (directory.exists() or directory.is_symlink()):
+            raise StoreConflict("Skill 制品目录已被并发创建，请重新发布")
+        return {**prepared, "authority": self}
+
+    def _activate_skill_artifact(self, prepared):
+        # Only the necessary atomic rename remains in the DB transaction.
+        # Managed publishers serialize by revision; packages are immutable.
+        if prepared.get("authority") is not self or time.monotonic() > prepared.get("commit_deadline", 0):
+            raise ConfigError("Skill 制品提交票据已过期，请重新预检", "quality_precheck_expired")
+        directory, stage = prepared["directory"], prepared["stage"]
+        if stage is not None:
+            try:
+                os.replace(stage, directory)
+            except OSError:
+                raise ConfigError("Skill 制品激活前已变化，请重新预检") from None
+            # Rollback also uses only rename. Recursive deletion is deferred to
+            # the caller's finally block after Store has released its lock.
+            self.store.on_rollback(lambda: os.replace(directory, stage))
+        return directory
+
+    def _skill_artifact(self, snapshot, item):
+        # Compatibility helper; publication stages content outside its DB lock.
+        from .management_quality import PUBLICATION_TICKET_SECONDS
+        prepared = self._prepare_skill_artifact(snapshot, item)
+        try:
+            prepared = self._check_prepared_skill_artifact(prepared)
+            prepared["commit_deadline"] = time.monotonic() + PUBLICATION_TICKET_SECONDS
+            return self.store.atomic(lambda: self._activate_skill_artifact(prepared))
+        finally:
+            if prepared["stage"] is not None and prepared["stage"].exists():
+                shutil.rmtree(prepared["stage"])
+
+    def publish(self, kind, id, expected_revision=None, *, channel="formal", evaluation_id=None):
+        item = self.require(kind, id)
+        if expected_revision is None:
+            raise ConfigError("发布必须提供 expected_revision", "revision_required")
+        if item["revision"] != expected_revision:
+            raise StoreConflict("发布时草稿已变化，请重新检查")
+        if channel not in {"formal", "experimental"}:
+            raise ConfigError("发布通道必须为 formal 或 experimental", "publication_channel_invalid")
+        if item.get("blocked"):
+            raise ConfigError("配置已立即阻止，请先明确解除阻止后重新校验", "capability_blocked")
+        from .management_quality import QualityService, PUBLICATION_TICKET_SECONDS
+        service = QualityService(self)
+        metadata = self.store.atomic(lambda: service._evaluation_state(kind, id, set(), "admin", include_pipeline=False))
+        # Schema validation, proof rescoring and immutable file preparation may
+        # be expensive. Never hold Store's writer lock while doing this work.
+        validation = self.validate(kind, item)
+        if not validation["valid"]:
+            raise ConfigError("发布校验未通过：" + "；".join(validation["errors"]))
+        prepared_quality = service.prepare_eligible(kind, id, evaluation_id) if channel == "formal" else None
+        quality = prepared_quality.record if prepared_quality else None
+        snapshot = {k: copy.deepcopy(v) for k, v in item.items() if k not in {"versions", "validation", "current_version", "publication_quality"}}
+        snapshot.update(enabled=channel == "formal", blocked=False, status="published" if channel == "formal" else "experimental", channel=channel)
+        if quality:
+            snapshot["publication_quality"] = {"evaluation_id": quality["id"], "suite_version": quality["policy"]["suite_version"],
+                "scorer_digest": quality["policy"]["scorer_digest"], "binding": quality["binding"], "eligible": True}
+        snapshot["artifact_digest"] = digest(snapshot)
+        prepared_artifact = self._prepare_skill_artifact(snapshot, item) if kind == "skill" else None
+        if prepared_artifact:
+            snapshot["artifact_path"] = str(prepared_artifact["directory"])
         def action():
-            item = self.require(kind, id)
-            if expected_revision is not None and item["revision"] != expected_revision:
+            current = self.require(kind, id)
+            if current["revision"] != expected_revision:
                 raise StoreConflict("发布时草稿已变化，请重新检查")
-            validation = self.validate(kind, item)
-            if not validation["valid"]:
-                raise ConfigError("发布校验未通过：" + "；".join(validation["errors"]))
-            snapshot = {k: copy.deepcopy(v) for k, v in item.items() if k not in {"versions", "validation", "current_version"}}
-            snapshot.update(enabled=True, blocked=False, status="published")
-            snapshot["artifact_digest"] = digest(snapshot)
-            if kind == "skill":
-                directory = self.artifact_dir / snapshot["artifact_digest"]
-                directory.mkdir(exist_ok=True)
-                files = {"SKILL.md": item["content"], **item["references"]}
-                for name, content in files.items():
-                    target = directory / name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    if target.exists():
-                        if target.read_text() != content:
-                            raise ConfigError("不可变 Skill 制品内容冲突")
-                    else:
-                        with target.open("x") as stream:
-                            stream.write(content)
-                        target.chmod(0o444)
-                snapshot["artifact_path"] = str(directory)
+            if service._evaluation_state(kind, id, set(), "admin", include_pipeline=False) != metadata:
+                raise StoreConflict("发布预检后配置、依赖或凭据已变化，请重新检查")
+            if prepared_quality:
+                service.verify_prepared(prepared_quality, kind, id, evaluation_id)
+            if prepared_artifact:
+                self._activate_skill_artifact(prepared_artifact)
             vid = "v_" + secrets.token_hex(12)
-            version = {"id": vid, "created_at": utcnow(), "source_revision": item["revision"], "digest": digest(snapshot), "snapshot": snapshot}
-            item["versions"].append(version)
-            item.update(current_version=vid, enabled=True, blocked=False, status="published", validation=validation)
-            saved = self.store.save(kind, id, item, item["revision"])
-            self.audit("publish", kind, id, {"version_id": vid, "digest": version["digest"]})
+            version = {"id": vid, "created_at": utcnow(), "source_revision": item["revision"], "digest": digest(snapshot), "snapshot": snapshot, "channel": channel}
+            current["versions"].append(version)
+            if channel == "formal":
+                current.update(current_version=vid, enabled=True, blocked=False, status="published", validation=validation,
+                    publication_quality=snapshot["publication_quality"])
+            else:
+                current.update(validation=validation)
+            saved = self.store.save(kind, id, current, current["revision"])
+            self.audit("publish", kind, id, {"version_id": vid, "digest": version["digest"], "channel": channel, "evaluation_id": evaluation_id})
             return saved
-        return self.store.atomic(action)
+        try:
+            if prepared_artifact:
+                prepared_artifact = self._check_prepared_skill_artifact(prepared_artifact)
+            if prepared_quality:
+                prepared_quality = service.finalize_prepared(prepared_quality)
+            # Both final filesystem scans are finished before the common
+            # deadline begins. Waiting too long for Store requires a new check.
+            deadline = prepared_quality.commit_deadline if prepared_quality else time.monotonic() + PUBLICATION_TICKET_SECONDS
+            if prepared_artifact:
+                prepared_artifact["commit_deadline"] = deadline
+            return self.store.atomic(action)
+        finally:
+            if prepared_artifact and prepared_artifact["stage"] is not None and prepared_artifact["stage"].exists():
+                shutil.rmtree(prepared_artifact["stage"])
 
     def rollback(self, kind, id, version_id):
         def action():
             item = self.require(kind, id)
             snapshot = self.published(item, version_id)
+            if snapshot.get("channel") == "experimental":
+                raise ConfigError("实验版本不能回退为正式生效版本", "experimental_version")
+            if item.get("blocked"):
+                raise ConfigError("配置已立即阻止，回退不能解除阻止", "capability_blocked")
             validation = self.validate(kind, snapshot)
             if not validation["valid"]:
                 raise ConfigError("回退版本已不可用：" + "；".join(validation["errors"]))
@@ -388,6 +540,10 @@ class ConfigService:
                 raise ConfigError("enabled 必须为布尔值")
             if payload["enabled"] and not item.get("current_version"):
                 raise ConfigError("请先发布配置再启用")
+            if payload["enabled"]:
+                validation = self.validate(kind, self.published(item))
+                if not validation["valid"]:
+                    raise ConfigError("当前发布版本已不可用：" + "；".join(validation["errors"]))
             if "blocked" in payload and not isinstance(payload["blocked"], bool):
                 raise ConfigError("blocked 必须为布尔值")
             item.update(enabled=payload["enabled"], blocked=payload.get("blocked", item.get("blocked", False)))
@@ -411,10 +567,10 @@ class ConfigService:
                     raise ConfigError("默认模型必须已发布且启用")
             budget = item["budget"]
             for key, maximum in {"tool_calls": 100, "source_requests": 100, "model_calls": 30, "wall_seconds": 1800, "max_tokens": 131072, "evidence_bytes": 10485760}.items():
-                if not isinstance(budget.get(key), int) or not 1 <= budget[key] <= maximum:
+                if type(budget.get(key)) is not int or not 1 <= budget[key] <= maximum:
                     raise ConfigError(f"预算 {key} 必须为 1 至 {maximum} 的整数")
             for key, maximum in {"queue_limit": 10, "retention_days": 365, "evidence_limit_bytes": 10485760, "storage_quota_bytes": 1099511627776}.items():
-                if not isinstance(item[key], int) or not 1 <= item[key] <= maximum:
+                if type(item[key]) is not int or not 1 <= item[key] <= maximum:
                     raise ConfigError(f"{key} 必须为 1 至 {maximum} 的整数")
             ongrid = item.get("ongrid", {})
             if not isinstance(ongrid, dict):

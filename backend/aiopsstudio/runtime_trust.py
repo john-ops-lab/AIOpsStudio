@@ -34,6 +34,8 @@ class TrustBoundary:
             self.policies.authorize_material(record, subject_id=owner, snapshot=run.get("policy_snapshot")))
 
     def authorize_history(self, run, owner, _seen=None, *, allow_legacy_archive=False):
+        if run.get("deleted_at"):
+            raise HTTPException(404, "分析不存在或当前不可访问")
         if (run.get("owner_id") or "admin") != owner:
             raise HTTPException(404, "分析不存在或当前不可访问")
         from .legacy_archive import archived, deny_execution

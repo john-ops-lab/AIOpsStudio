@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 from datetime import datetime, timezone
 import secrets
 
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from .identity import actor_id, resource_owner
 from .access_policy import PolicyError
@@ -46,7 +48,7 @@ class ConversationsService:
 
     def require_owned(self, id, owner_id, *, allow_legacy_archive=False):
         item = self.store.get("conversation", id)
-        if not item or resource_owner(item) != owner_id:
+        if not item or item.get("deleted_at") or resource_owner(item) != owner_id:
             raise HTTPException(404, "会话不存在")
         self._authorize_history(item, owner_id, allow_legacy_archive=allow_legacy_archive)
         return item
@@ -79,18 +81,51 @@ class ConversationsService:
                     raise
                 raise HTTPException(404, "会话不存在或当前不可访问") from None
 
-    def list(self, owner_id):
-        visible = []
-        for conversation in self.store.list("conversation"):
-            if resource_owner(conversation) != owner_id:
-                continue
+    def lifecycle(self):
+        from .lifecycle import LifecycleService
+        return LifecycleService(self.app)
+
+    def list_page(self, owner_id, *, search="", archived=False, status=None, cursor=None, limit=50, start=None, end=None):
+        if not isinstance(search, str) or len(search) > 200 or not 1 <= limit <= 100:
+            raise HTTPException(422, "历史搜索或分页参数无效")
+        for stamp in (start, end):
+            if stamp is not None:
+                try:
+                    parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        raise ValueError()
+                except (TypeError, ValueError):
+                    raise HTTPException(422, "历史时间范围须使用带时区的绝对时间") from None
+        if start and end and datetime.fromisoformat(start.replace("Z", "+00:00")) > datetime.fromisoformat(end.replace("Z", "+00:00")):
+            raise HTTPException(422, "历史时间范围开始晚于结束")
+        start = datetime.fromisoformat(start.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat() if start else None
+        end = datetime.fromisoformat(end.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat() if end else None
+        visible, current = [], cursor
+        while len(visible) < limit:
+            try:
+                page = self.store.query_documents("conversation", owner_id=owner_id, search=search, archived=archived,
+                    status=status, cursor=current, limit=1, created_from=start, created_to=end)
+            except ValueError:
+                raise HTTPException(422, "分页游标无效或不属于当前查询") from None
+            if not page["items"]:
+                current = None
+                break
+            conversation = page["items"][0]
+            current = page.get("next_cursor")
             try:
                 self._authorize_history(conversation, owner_id, allow_legacy_archive=True)
             except (HTTPException, PolicyError):
-                continue
-            from .legacy_archive import archived, label
-            visible.append(label(conversation) if archived(self.store, "conversation", conversation, owner_id) else conversation)
-        return sorted(visible, key=lambda c: c.get("updated_at", ""), reverse=True)
+                if current:
+                    continue
+                break
+            from .legacy_archive import archived as legacy_archived, label
+            visible.append(label(conversation) if legacy_archived(self.store, "conversation", conversation, owner_id) else conversation)
+            if not current:
+                break
+        return {"items": visible, "next_cursor": current}
+
+    def list(self, owner_id):
+        return self.list_page(owner_id, limit=100)["items"]
 
     def create(self, owner_id, payload):
         key = payload.get("client_request_id")
@@ -101,16 +136,18 @@ class ConversationsService:
             raise HTTPException(422, "会话标题不能超过 200 个字符")
         context = self.context(payload.get("context") or {})
         def create():
-            existing = next((c for c in self.store.list("conversation") if resource_owner(c) == owner_id and c.get("client_request_id") == key), None)
+            existing = next((c for c in self.store.list("conversation") if resource_owner(c) == owner_id and (c.get("client_request_id") == key or c.get("client_request_sha256") == hashlib.sha256(key.encode()).hexdigest())), None)
             if existing:
                 return self.require_owned(existing["id"], owner_id)
             return self.store.save("conversation", "conv_" + secrets.token_hex(16), {"owner_id": owner_id, "title": title.strip(), "context": context,
-                    "messages": [], "active_run_id": None, "client_request_id": key})
+                    "messages": [], "active_run_id": None, "client_request_id": key, "lifecycle_version": 2, "archived": False})
         return self.store.atomic(create)
 
     def update(self, id, owner_id, payload):
         def update():
             item = self.require_owned(id, owner_id)
+            if item.get("archived"):
+                raise HTTPException(409, "归档会话须先恢复后修改")
             if "title" in payload:
                 if not isinstance(payload["title"], str) or not payload["title"].strip() or len(payload["title"]) > 200:
                     raise HTTPException(422, "会话标题须为 1 至 200 个字符")
@@ -180,9 +217,30 @@ class ConversationsService:
             raise HTTPException(422, "消息正文不能为空且不能超过 64000 个字符")
         async with self._locks.setdefault(id, asyncio.Lock()):
             conversation = self.require_owned(id, owner_id)
+            if conversation.get("archived"):
+                raise HTTPException(409, "归档会话须先恢复后发送消息")
             existing = next((m for m in conversation["messages"] if m.get("client_message_id") == client_id and m.get("role") == "user"), None)
             if existing and existing.get("status") != "pending":
                 return self._receipt(id, owner_id, existing)
+            mode = existing.get("mode", "analyze") if existing else payload.get("mode", "analyze")
+            if not isinstance(mode, str) or mode not in {"analyze", "explain", "followup"}:
+                raise HTTPException(422, "消息模式须为 analyze、explain 或 followup")
+            if mode == "explain" and attachment_ids:
+                raise HTTPException(422, "解释已有结果不能添加新材料，请使用补查模式")
+            runs = sorted([r for r in self.store.list("run") if not r.get("deleted_at") and resource_owner(r) == owner_id and (r.get("conversation_id") or r.get("thread_id")) == id], key=lambda r: r.get("created_at", ""))
+            parent_id = existing.get("parent_run_id") if existing else payload.get("parent_run_id")
+            parent = None
+            if mode in {"explain", "followup"}:
+                if parent_id is None:
+                    parent = next((r for r in reversed(runs) if r.get("status") in TERMINAL), None)
+                    parent_id = parent.get("id") if parent else None
+                else:
+                    if not isinstance(parent_id, str):
+                        raise HTTPException(422, "父轮标识格式无效")
+                    parent = next((r for r in runs if r["id"] == parent_id), None)
+                if not parent or parent.get("status") not in TERMINAL:
+                    raise HTTPException(404, "可解释或补查的已完成父轮不存在")
+                self.app.state.runtime.require_owned(parent_id, owner_id)
             if existing:
                 message = existing
                 try:
@@ -192,10 +250,11 @@ class ConversationsService:
                     raise
                 attachment_ids, content = existing["attachment_ids"], existing["content"]
             else:
-                context = {**conversation.get("context", {}), **self.context(payload.get("run_input") or {})}
+                inherited = {k: v for k, v in (parent.get("_request") or {}).items() if k in CONTEXT_FIELDS} if parent else {}
+                context = {**inherited, **conversation.get("context", {}), **self.context(payload.get("run_input") or {})}
                 # Validate references before accepting a message; never persist a foreign attachment ID.
                 self.app.state.attachments.reading_context(owner_id, id, attachment_ids)
-                message = self.append_message(id, owner_id, "user", content.strip(), client_id, attachment_ids=attachment_ids, status="pending", analysis_context=context)
+                message = self.append_message(id, owner_id, "user", content.strip(), client_id, attachment_ids=attachment_ids, status="pending", analysis_context=context, mode=mode, parent_run_id=parent_id)
                 conversation = self.update(id, owner_id, {"context": context})
             runtime = getattr(self.app.state, "runtime", None)
             hint = None
@@ -206,7 +265,6 @@ class ConversationsService:
             if hint:
                 message = self._update_message(id, owner_id, message["id"], status="not_executed", error={"code": "context_required", "detail": hint}, hint=hint)
                 return self._receipt(id, owner_id, message)
-            runs = sorted([r for r in self.store.list("run") if resource_owner(r) == owner_id and (r.get("conversation_id") or r.get("thread_id")) == id], key=lambda r: r.get("created_at", ""))
             key = "chat:" + id + ":" + message["id"]
             linked = next((r for r in runs if r.get("client_request_id") == key or
                            any(m.get("role") == "user" and m.get("client_message_id") == message["id"] for m in r.get("messages", []))), None)
@@ -214,7 +272,7 @@ class ConversationsService:
             try:
                 if linked:
                     run = linked
-                elif active and self._same_context(active, context):
+                elif mode == "analyze" and active and active.get("mode", "analyze") == "analyze" and self._same_context(active, context):
                     await runtime.message(active["id"], {"content": content, "client_message_id": message["id"], "attachment_ids": attachment_ids,
                         "context": {"run_id": active["id"], **{k: active.get(k) for k in CONTEXT_FIELDS if k in active}}}, owner_id=owner_id)
                     run = self.store.get("run", active["id"])
@@ -223,7 +281,7 @@ class ConversationsService:
                         raise HTTPException(422, "Chat 分析请选择已发布的 Skill 版本")
                     submitted = {k: v for k, v in context.items() if k in CONTEXT_FIELDS}
                     submitted.update(purpose="investigation", thread_id=id, conversation_id=id, message=content, attachment_ids=attachment_ids,
-                                     client_request_id=key, conversation_message_id=message["id"], parent_run_id=runs[-1]["id"] if runs else None)
+                                     client_request_id=key, conversation_message_id=message["id"], mode=mode, parent_run_id=parent_id or (runs[-1]["id"] if runs else None))
                     run = await runtime.submit(submitted, owner_id=owner_id)
                 run = self.store.get("run", run["id"]) or run
                 changes = {"status": "accepted", "run_id": run["id"], "error": None, "hint": None}
@@ -242,7 +300,7 @@ class ConversationsService:
         owner_id = resource_owner(run)
         conversation_id = run.get("conversation_id") or run.get("thread_id")
         conversation = self.store.get("conversation", conversation_id) if conversation_id else None
-        if not conversation:
+        if not conversation or conversation.get("deleted_at") or run.get("deleted_at"):
             return None
         self.require_owned(conversation_id, owner_id)
         if run.get("status") not in TERMINAL:
@@ -275,6 +333,7 @@ class ConversationsService:
             latest = self.store.get("run", run["id"])
             if latest:
                 latest["report_attachment"] = attachment
+                latest["delivery_status"] = "failed" if attachment_error else "ready"
                 if attachment_error:
                     latest["report_attachment_error"] = attachment_error
                     latest["artifact_error"] = attachment_error
@@ -284,6 +343,18 @@ class ConversationsService:
                 self.store.save("run", run["id"], latest, latest["revision"])
         self.store.atomic(update)
         return attachment
+
+    def repair_report(self, run_id, owner_id):
+        runtime = getattr(self.app.state, "runtime", None)
+        if runtime is None:
+            raise HTTPException(503, "分析执行器尚未装配")
+        run = runtime.require_owned(run_id, owner_id)
+        if run.get("status") not in TERMINAL:
+            raise HTTPException(409, "只有已完成轮次可以修复报告文件")
+        self.finish_run(run)
+        latest = self.store.get("run", run_id)
+        return {"delivery_status": latest.get("delivery_status", "pending"), "report_attachment": latest.get("report_attachment"),
+                "error": latest.get("report_attachment_error")}
 
     def detail(self, id, owner_id):
         result = self.require_owned(id, owner_id, allow_legacy_archive=True)
@@ -313,6 +384,11 @@ class ConversationsService:
 
 def configure_conversations(app):
     service = app.state.conversations
+    from .lifecycle import LifecycleConflict
+
+    @app.exception_handler(LifecycleConflict)
+    async def lifecycle_conflict(request, error):
+        return JSONResponse({"detail": error.detail, "code": error.code}, status_code=409)
 
     async def body(request):
         data = await request.json()
@@ -321,8 +397,9 @@ def configure_conversations(app):
         return data
 
     @app.get("/api/conversations")
-    async def listing(request: Request):
-        return {"items": service.list(actor_id(request))}
+    async def listing(request: Request, search: str = "", archived: bool = False, status: str | None = None,
+                      cursor: str | None = None, limit: int = 50, start: str | None = None, end: str | None = None):
+        return service.list_page(actor_id(request), search=search, archived=archived, status=status, cursor=cursor, limit=limit, start=start, end=end)
 
     @app.post("/api/conversations")
     async def create(request: Request):
@@ -339,3 +416,26 @@ def configure_conversations(app):
     @app.post("/api/conversations/{id}/messages")
     async def message(id: str, request: Request):
         return await service.send_message(id, actor_id(request), await body(request))
+
+    @app.post("/api/conversations/{id}/archive")
+    async def archive(id: str, request: Request):
+        return service.lifecycle().archive(id, actor_id(request), await body(request))
+
+    @app.get("/api/conversations/{id}/export")
+    async def export(id: str, request: Request):
+        return service.lifecycle().export(id, actor_id(request))
+
+    @app.post("/api/conversations/{id}/deletion-preview")
+    async def deletion_preview(id: str, request: Request):
+        return service.lifecycle().preview("conversation", id, actor_id(request))
+
+    @app.post("/api/conversations/{id}/delete")
+    async def deletion(id: str, request: Request):
+        payload = await body(request)
+        lifecycle = service.lifecycle()
+        result = lifecycle.delete("conversation", id, actor_id(request), payload)
+        return await lifecycle.finish_cleanup(result, payload["preview_token"], actor_id(request))
+
+    @app.post("/api/runs/{id}/repair-report")
+    async def repair(id: str, request: Request):
+        return service.repair_report(id, actor_id(request))

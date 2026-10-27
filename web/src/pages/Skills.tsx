@@ -1,3 +1,4 @@
+import QualityPanel from "../components/management/QualityPanel";
 import { useEffect, useState } from "react";
 import {
   BookOpen,
@@ -430,6 +431,7 @@ function SkillEditor({
           )
         ) : null}
       </div>
+      <QualityPanel key={String(id) + ":" + form.revision} kind="skill" value={form} dirty={dirty} onPublished={async () => { await resource.reload(); await versions.reload(); }} />
       <footer className="editor-footer">
         <div className="actions">
           <Button
@@ -471,7 +473,7 @@ function SkillEditor({
           </Button>
           <Button
             variant="primary"
-            onClick={() => void command("publish")}
+            onClick={() => document.querySelector<HTMLElement>('[aria-label="发布质量检查"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
             disabled={dirty}
             busy={state.busy === "publish"}
           >
@@ -489,8 +491,9 @@ function SkillEditor({
             disabled={dirty}
           >
             <Play size={14} />
-            试运行
+            试运行草稿
           </Button>
+          {form.current_version ? <Button disabled={dirty} onClick={() => onRun({ skill_id: id, skill_version: form.current_version, purpose: "skill_test" })}>试运行正式版对照</Button> : null}
         </div>
       </footer>
       {version ? (

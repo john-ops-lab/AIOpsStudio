@@ -1,3 +1,4 @@
+import QualityPanel from "../components/management/QualityPanel";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -100,16 +101,18 @@ function CreateMcp({
 function ToolInspector({
   server,
   tool,
+  dirty,
   onRun,
   onChanged,
 }: {
   server: Entity;
   tool: Entity;
+  dirty: boolean;
   onRun: (run: Run) => void;
   onChanged: () => void;
 }) {
   const [tab, setTab] = useState("params"),
-    [args, setArgs] = useState("{}");
+    [args, setArgs] = useState("{}"), [testVersion, setTestVersion] = useState("draft");
   const state = useAction();
   const pendingRequest = useRef<{ args: string; id: string } | null>(null);
   const allowed = (server.allowed_tools || []).includes(tool.name);
@@ -166,30 +169,33 @@ function ToolInspector({
           </Field>
           {!allowed ? (
             <div className="scope-note">
-              此工具未在已保存白名单中开放，请先检查只读行为并发布配置。
+              此工具未在已保存白名单中开放，请先检查只读行为并保存白名单。
             </div>
           ) : null}
+          {dirty ? <p className="scope-note">请先保存修改，再试调已保存的配置。</p> : null}
+          <Field label="试调配置版本"><select aria-label="MCP试调配置版本" value={testVersion} onChange={(e) => setTestVersion(e.target.value)}><option value="draft">当前草稿</option>{server.current_version ? <option value={server.current_version}>当前正式版（对照）</option> : null}</select></Field>
           <div className="form-actions">
             <Button
               variant="primary"
               busy={!!state.busy}
               disabled={
+                dirty ||
                 !allowed ||
                 !tool.readonly ||
                 server.blocked ||
-                !server.enabled ||
-                !server.current_version
+                (testVersion !== "draft" && (!server.enabled || !server.current_version))
               }
               onClick={() =>
                 void state.act("test", async () => {
                   if (
                     !pendingRequest.current ||
-                    pendingRequest.current.args !== args
+                    pendingRequest.current.args !== JSON.stringify([args,testVersion])
                   ) {
-                    pendingRequest.current = { args, id: requestId() };
+                    pendingRequest.current = { args: JSON.stringify([args,testVersion]), id: requestId() };
                   }
                   const run = await post<Run>("/tool-tests", {
                     server_id: server.id,
+                    config_version: testVersion,
                     tool_name: tool.name,
                     arguments: parseJson(args, "请求参数", "object"),
                     client_request_id: pendingRequest.current!.id,
@@ -528,6 +534,7 @@ function McpEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
                 <ToolInspector
                   key={currentTool.name}
                   server={resource.data || form}
+                  dirty={dirty}
                   tool={
                     (form.tools || catalog).find(
                       (t: Entity) => t.name === currentTool.name,
@@ -563,6 +570,7 @@ function McpEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
           )
         ) : null}
       </div>
+      <QualityPanel key={String(id) + ":" + form.revision} kind="mcp" value={form} dirty={dirty} onPublished={async () => { await resource.reload(); }} />
       <footer className="editor-footer">
         <div className="actions">
           <Button
@@ -608,7 +616,7 @@ function McpEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
           </Button>
           <Button
             variant="primary"
-            onClick={() => void command("publish")}
+            onClick={() => document.querySelector<HTMLElement>('[aria-label="发布质量检查"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
             busy={state.busy === "publish"}
             disabled={dirty}
           >

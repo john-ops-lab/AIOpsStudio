@@ -16,6 +16,7 @@ from aiopsstudio.runtime import configure_runtime
 from aiopsstudio.store import Store
 from aiopsstudio.attachments import FILE_LIMIT, USER_LIMIT
 from m1_fixtures import seed_policies
+from m2_management_fixtures import legacy_publication
 
 ADMIN_PASSWORD = "admin-test-password-long"
 USER_PASSWORD = "operator-test-password-long"
@@ -37,11 +38,11 @@ def chat(tmp_path):
     assert operator.post("/api/login", json={"username": "operator", "password": USER_PASSWORD}).status_code == 200
     config = app.state.config
     model = config.save("model", {"name": "合成模型配置", "model": "fixture", "secret_value": "synthetic-fixture-key-never-call"})
-    model = config.publish("model", model["id"], model["revision"])
+    model = legacy_publication(config, "model", model)
     settings = store.get("settings", "main")
     config.settings({"expected_revision": settings["revision"], "default_model_id": model["id"]})
     skill = config.save("skill", {"name": "chat-fixture", "content": "---\nname: chat-fixture\ndescription: 合成测试方法，不执行真实调用\n---\n仅用于验证持久回执。"})
-    skill = config.publish("skill", skill["id"], skill["revision"])
+    skill = legacy_publication(config, "skill", skill)
     yield SimpleNamespace(app=app, store=store, admin=admin, operator=operator, user=user, context={**CONTEXT, "skill_id": skill["id"]}, path=tmp_path)
     admin.close()
     operator.close()

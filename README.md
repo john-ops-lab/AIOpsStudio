@@ -90,11 +90,11 @@ backend/.venv/bin/python deploy/seed.py --bootstrap /absolute/external/bootstrap
 | `settings` | 预算、Ongrid 接入、`query_catalog` 与 `identity_mapping` |
 | `skills` | 名称、正文或相对引导文件的 `content_file`、schema、参考文件与工具依赖 |
 
-MCP 依赖以 `server_name` 和 `tool_name` 指明；Ongrid 依赖使用 `provider=ongrid` 与工具名。引导 JSON 拒绝重复键和非标准数值；`content_file` 必须位于引导文件所在目录内。引导会实际发现 MCP 目录，按显式只读白名单校验再发布；不会执行模型或业务工具。已发布的同名配置保留并计入 `preserved_existing`，同名未发布草稿需在管理页处理。没有默认源地址、模型、白名单或查询目录；`skills/` 仅提供可审查的通用文本，需按实际来源明确依赖后发布。
+MCP 依赖以 `server_name` 和 `tool_name` 指明；Ongrid 依赖使用 `provider=ongrid` 与工具名。引导 JSON 拒绝重复键和非标准数值；`content_file` 必须位于引导文件所在目录内。引导会实际发现 MCP 目录，按显式只读白名单保存草稿；不会发布正式版本，也不会执行模型或业务工具。导入后先在管理页完成固定案例比较，再依次完成模型、MCP、Skill 的草稿试运行、质量评估和正式发布；新增配置需全部通过门槛后才能正式分析。新模型未正式发布时，引导返回 default_model_pending=true，保留原默认模型设置；发布后在模型设置页选择默认模型。已发布的同名配置保留并计入 `preserved_existing`，同名未发布草稿需在管理页处理。没有默认源地址、模型、白名单或查询目录；`skills/` 仅提供可审查的通用文本，需按实际来源明确依赖后发布。
 
 ## 执行与证据边界
 
-分析、Skill 试运行、工具试调和模型测试共用数据库控制的单执行槽，等待队列最多 10 项。普通用户仅执行已发布且启用的 Skill；配置变更和试调由管理员操作。消息先按用户和会话幂等持久化，再在模型调用边界消费。改变主目标、Skill、主窗口或终态后补查会创建新 attempt。
+分析、Skill 试运行、工具试调和模型测试共用数据库控制的单执行槽，等待队列按设置的 queue_limit 限制（1–10 项）。普通用户仅执行已发布且启用的 Skill；配置变更和试调由管理员操作。消息先按用户和会话幂等持久化，再在模型调用边界消费。改变主目标、Skill、主窗口或终态后补查会创建新 attempt。
 
 会话关联轮次保留历史，不受旧独立任务七天清理影响。上传单件上限 5 MiB、每用户 100 MiB、请求体上限 8 MiB；UTF-8 材料单件至多 12000 字符、单次合计 24000 字符。空间不足时拒绝新增；截断和未提取状态明确保留，旧证据不自动作为新轮依据。
 
@@ -108,7 +108,7 @@ HTTP 成功、工具成功、模型报告、业务覆盖与用户接受分别记
 
 当前已接入固定对象/窗口、覆盖状态、证据与 Skill 资料按需补读、结构字段核对，以及每用户源授权和模型实际 HTTP 出站检查。没有配置身份/查询契约时先补信息，没有 source/egress 策略时默认拒绝。管理员可在模型设置页维护查询目录与两类策略；普通用户只看到可选配置元数据。
 
-[完整设计](docs/design/AIOpsStudio完整设计.md)、[M1 合同](CONTRACT.md#当前增量m1-可信分析与数据边界)、[初次实现验证](docs/validation/2026-10-23-m1.md)和[审查与升级验证](docs/validation/2026-10-23-pr15-review-upgrade.md)区分代码、合成回放、真实 MiniMax 样本和业务接受。Mac 已按授权更新，旧配置与数据保持；旧历史以只读档案保留，新分析须显式配置新契约。正式发布质量门槛及后续协作能力继续按路线图开发。
+[完整设计](docs/design/AIOpsStudio完整设计.md)、[M1 合同](CONTRACT.md#当前增量m1-可信分析与数据边界)、[初次实现验证](docs/validation/2026-10-23-m1.md)和[审查与升级验证](docs/validation/2026-10-23-pr15-review-upgrade.md)区分代码、合成回放、真实 MiniMax 样本和业务接受。Mac 已按授权更新，旧配置与数据保持；旧历史以只读档案保留，新分析须显式配置新契约。M2 分支补齐正式发布质量门槛、聊天解释/补查与用量、生命周期及恢复验证，本批隔离验收见 [M2 验证](docs/validation/2026-10-27-m2.md)，尚待 PR 审查；后续协作能力继续按路线图开发。
 
 ## 验证与开发
 
@@ -146,6 +146,6 @@ openspec validate --all --strict
 
 ## 备份与目录
 
-备份本应用 PostgreSQL、Skill/证据/附件目录及独立主密钥恢复材料。恢复时停止本应用写入并保持数据一致；仅恢复数据库不能恢复附件字节或缺失的主密钥。
+使用 `scripts/backup_workspace.py` 显式创建、验证、恢复私有一致性备份，包含应用表、PostgreSQL 检查点、Skill 包、证据及附件，独立主密钥单独保管。备份拒绝运行中任务，恢复只允许空隔离目标；恢复后工作区先隔离，必须提供从备份之外核对的当前授权与撤销事实才能解锁。操作命令和边界见[恢复验证](openspec/changes/verify-execution-recovery/verification.md)。不得向公共仓库提交备份、数据库 URL 或密钥。
 
 `backend/aiopsstudio/` 提供配置、认证、Vault、存储和执行；`web/src/` 为 React 界面，`web/server.mjs` 提供同源代理与持久 Runner；`deploy/` 提供本机生命周期和显式引导；`tests/` 提供验收入口。公开 [Chat 演示图](docs/design/assets/20261022-AIOpsStudio-Chat工作台Demo-v0.1.png)及架构图均为完全新制的通用演示素材，不是实际验收截图。第三方依赖保留各自许可，不分发安装目录。

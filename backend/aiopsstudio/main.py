@@ -58,12 +58,16 @@ def create_app(*, database_url=None, master_key=None, password=None, public_orig
     app.state.attachments = AttachmentsService(store, artifact_dir, app.state.vault)
     app.state.conversations = ConversationsService(app, store)
     app.state.testing = testing
+    from .management_quality import configure_quality
+    configure_quality(app)
     configure_api(app)
     configure_conversations(app)
     configure_attachments(app)
     if enable_runtime:
         from .runtime import configure_runtime
         configure_runtime(app, store)
+        from .usage import configure_usage
+        configure_usage(app)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, error):
