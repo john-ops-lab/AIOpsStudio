@@ -29,3 +29,5 @@ export function fileBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+export function runTitle(run: Entity) { return run.mode === "explain" ? "解释已有结果" : run.mode === "followup" ? `补查 · ${run.title || "分析报告"}` : run.title || "分析报告"; }

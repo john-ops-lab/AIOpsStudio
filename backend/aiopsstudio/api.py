@@ -113,6 +113,9 @@ def configure_api(app: FastAPI):
         request.state.session_id = sid
         if request.url.path not in {"/api/session", "/api/login"} and not request.state.authenticated:
             return JSONResponse({"detail": "请先登录工作台", "code": "authentication_required"}, status_code=401)
+        restored = store.get("restore_guard", "main")
+        if user and restored and not restored.get("verified") and request.url.path not in {"/api/login", "/api/session", "/api/logout", "/api/restore-status"}:
+            return JSONResponse({"detail": "恢复实例尚未核对最新授权，工作空间暂不可访问", "code": "restore_unverified"}, status_code=503)
         if user and user["role"] != "admin":
             management = ("/api/skills", "/api/mcp-servers", "/api/model-configs", "/api/settings", "/api/secrets", "/api/config-audit", "/api/users", "/api/tool-tests")
             admin_read = ("/api/secrets", "/api/config-audit", "/api/users")
@@ -129,6 +132,12 @@ def configure_api(app: FastAPI):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         return response
+
+    @app.get("/api/restore-status")
+    async def restore_status(request: Request):
+        actor_id(request)
+        guard = store.get("restore_guard", "main")
+        return {"authorization_verified": not guard or guard.get("verified") is True}
 
     @app.get("/api/session")
     async def session(request: Request):
@@ -213,7 +222,7 @@ def configure_api(app: FastAPI):
             payload = await json_body(request)
             if "expected_revision" not in payload:
                 raise ConfigError("发布必须提供 expected_revision", "revision_required")
-            return public(service.publish(kind, id, payload["expected_revision"]))
+            return public(service.publish(kind, id, payload["expected_revision"], channel=payload.get("channel", "formal"), evaluation_id=payload.get("evaluation_id")))
 
         @app.post(path + "/{id}/state", name=f"state_{kind}")
         async def state(id: str, request: Request):
@@ -334,7 +343,9 @@ def configure_api(app: FastAPI):
         data = await json_body(request)
         if not data.get("client_request_id"):
             raise ConfigError("模型测试必须提供 client_request_id")
-        result = await app.state.runtime.submit({"purpose": "model_test", "model_id": id, "model_snapshot": copy.deepcopy(config), "client_request_id": data["client_request_id"], "title": "模型中文工具调用样本"}, owner_id=actor_id(request))
+        if data.get("expected_revision", config["revision"]) != config["revision"]:
+            raise StoreConflict("模型配置已变化，请重新读取后试运行")
+        result = await app.state.runtime.submit({"purpose": "model_test", "model_id": id, "config_version": data.get("config_version", "draft"), "client_request_id": data["client_request_id"], "title": "模型中文工具调用样本"}, owner_id=actor_id(request))
         return public(result)
 
     @app.get("/api/settings")
@@ -382,4 +393,4 @@ def configure_api(app: FastAPI):
         visible_mcps = [m for item in store.list("mcp") if (m := catalog_view("mcp", item, request)) is not None]
         counts = {"skills": sum(catalog_view("skill", item, request) is not None for item in store.list("skill")), "mcp_servers": len(visible_mcps),
             "models": sum(catalog_view("model", item, request) is not None for item in store.list("model")), "runs": len(runs), "evidence": len(evidence)}
-        return public({"counts": counts, "queue": {"running": len(running), "queued": len(queued), "waiting": len(queued), "limit": 10, "current": run_projection(running[0]) if running else None}, "services": [{"id": m["id"], "name": m["name"], "type": "mcp", "status": m.get("last_probe", {}).get("status", "unchecked"), "enabled": m.get("enabled", False), "checked_at": m.get("last_probe", {}).get("checked_at")} for m in visible_mcps] + [{"id": "glpi", "name": "GLPI", "type": "ticket", "status": "not_connected", "detail": "未接入"}], "recent_runs": [run_projection(r) for r in runs[:10]], "storage": {"evidence_bytes": storage_bytes, "quota_bytes": service.require("settings", "main")["storage_quota_bytes"], "database": "sqlite_test" if store.sqlite else "postgresql", "measurement": "stored_evidence_metadata"}})
+        return public({"counts": counts, "queue": {"running": len(running), "queued": len(queued), "waiting": len(queued), "limit": int(service.require("settings", "main").get("queue_limit", 10)), "current": run_projection(running[0]) if running else None}, "services": [{"id": m["id"], "name": m["name"], "type": "mcp", "status": m.get("last_probe", {}).get("status", "unchecked"), "enabled": m.get("enabled", False), "checked_at": m.get("last_probe", {}).get("checked_at")} for m in visible_mcps] + [{"id": "glpi", "name": "GLPI", "type": "ticket", "status": "not_connected", "detail": "未接入"}], "recent_runs": [run_projection(r) for r in runs[:10]], "storage": {"evidence_bytes": storage_bytes, "quota_bytes": service.require("settings", "main")["storage_quota_bytes"], "database": "sqlite_test" if store.sqlite else "postgresql", "measurement": "stored_evidence_metadata"}})

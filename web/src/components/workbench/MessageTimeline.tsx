@@ -1,3 +1,4 @@
+import { runTitle } from "./context";
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUpRight, CheckCircle2, FileText, MessageSquare, Paperclip } from "lucide-react";
 import type { Entity, Run } from "../../types";
@@ -14,7 +15,7 @@ function MessageBody({ text, summarize, onEvidence }: { text: string; summarize:
 function ReportCard({ run, round, onOpen }: { run: Run; round: number; onOpen: () => void }) {
   return <button className="report-artifact" onClick={onOpen}>
     <span className="report-file-icon"><FileText size={23} aria-hidden="true" /></span>
-    <span className="report-card-title"><strong>{run.title || "分析报告"}</strong><small>第 {round} 轮 · 结论、依据与待核对项</small></span>
+    <span className="report-card-title"><strong>{runTitle(run)}</strong><small>第 {round} 轮 · 结论、依据与待核对项</small></span>
     <span className="report-card-action"><Status value={run.status}>{run.status === "partial" ? "部分覆盖" : undefined}</Status><span>查看报告<ArrowUpRight size={14} aria-hidden="true" /></span></span>
   </button>;
 }

@@ -1,3 +1,4 @@
+import QualityPanel from "../components/management/QualityPanel";
 import { useEffect, useState } from "react";
 import { Bot, Database, Plus, Save, Send, TestTube2 } from "lucide-react";
 import {
@@ -86,7 +87,7 @@ function ModelEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
     state = useAction();
   const [form, setForm] = useState<Entity | null>(null),
     [secret, setSecret] = useState(""),
-    [dirty, setDirty] = useState(false);
+    [dirty, setDirty] = useState(false), [testVersion, setTestVersion] = useState("draft");
   useEffect(() => {
     if (resource.data) {
       setForm(resource.data);
@@ -216,12 +217,14 @@ function ModelEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
           模型测试会创建独立持久任务，验证中文响应与工具调用协议；真实 MCP
           与业务分析另行保留验证结果。
         </div>
+        <details><summary>费用单价（可选）</summary><div className="form-grid">{[["input_per_million", "每百万输入 token 单价"], ["output_per_million", "每百万输出 token 单价"], ["cached_input_per_million", "每百万缓存读取 token 单价"]].map(([key,label]) => <Field key={key} label={label}><input type="number" min="0" step="any" aria-label={label} value={form.pricing?.[key] ?? ""} onChange={(e) => (() => { const next = {...form.pricing}; if (e.target.value === "") delete next[key]; else next[key] = Number(e.target.value); change("pricing", Object.keys(next).length ? next : null); })()} /></Field>)}{[["currency", "币种"], ["as_of", "单价日期"], ["version", "单价版本"]].map(([key,label]) => <Field key={key} label={label}><input type={key === "as_of" ? "date" : "text"} aria-label={label} value={form.pricing?.[key] || ""} onChange={(e) => change("pricing", {...form.pricing, [key]: e.target.value})} /></Field>)}</div><p className="muted">未配置完整单价时费用显示未知；按本轮固定单价估算。</p><Button disabled={!form.pricing} onClick={() => change("pricing", null)}>清除单价</Button></details>
         <JsonView
           value={form.capabilities || form.test_result || form.validation || {}}
           title="已记录的能力与检查范围"
           open
         />
       </div>
+      <QualityPanel key={String(id) + ":" + form.revision} kind="model" value={form} dirty={dirty} onPublished={async () => { await resource.reload(); }} />
       <footer className="editor-footer">
         <Button
           onClick={() => void command("state", { enabled: !form.enabled })}
@@ -252,9 +255,10 @@ function ModelEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
             <Save size={14} />
             保存草稿
           </Button>
+          <select aria-label="模型试运行版本" value={testVersion} onChange={(e) => setTestVersion(e.target.value)}><option value="draft">测试当前草稿</option>{form.current_version ? <option value={form.current_version}>测试当前正式版（对照）</option> : null}</select>
           <Button
             onClick={() =>
-              void command("test", { client_request_id: requestId() })
+              void command("test", { client_request_id: requestId(), config_version: testVersion })
             }
             disabled={dirty}
             busy={state.busy === "test"}
@@ -264,12 +268,12 @@ function ModelEditor({ id, onRun }: { id: string; onRun: (run: Run) => void }) {
           </Button>
           <Button
             variant="primary"
-            onClick={() => void command("publish")}
+            onClick={() => document.querySelector<HTMLElement>('[aria-label="发布质量检查"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
             disabled={dirty}
             busy={state.busy === "publish"}
           >
             <Send size={14} />
-            发布配置
+            发布检查
           </Button>
         </div>
       </footer>

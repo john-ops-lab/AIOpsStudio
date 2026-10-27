@@ -264,7 +264,7 @@ def test_bootstrap_api_errors_never_echo_input_secret(tmp_path, credential):
     assert str(caught.value) == '管理请求失败 HTTP 422；请在工作台检查对应配置和连接'
 
 
-def test_bootstrap_publishes_only_discovered_allowlist_and_resolves_names(tmp_path):
+def test_bootstrap_saves_drafts_only_discovered_allowlist_and_resolves_names(tmp_path):
     requests = []
     def handle(request):
         method, path = request.method, request.url.path
@@ -282,7 +282,7 @@ def test_bootstrap_publishes_only_discovered_allowlist_and_resolves_names(tmp_pa
                 assert {x['name']: x['readonly'] for x in body['tools']} == {'approved_read': True, 'other_operation': False}
             return httpx.Response(200, json={'id': 'server-demo', 'revision': 3, 'current_version': 'v-demo'})
         if path.startswith('/api/model-configs'):
-            return httpx.Response(200, json={'id': 'model-demo', 'revision': 1, 'current_version': 'v-demo'})
+            return httpx.Response(200, json={'id': 'model-demo', 'revision': 1, 'current_version': None})
         if path == '/api/settings':
             assert body['default_model_id'] == 'model-demo' and body['expected_revision'] == 4
             return httpx.Response(200, json={'revision': 5})
@@ -296,5 +296,22 @@ def test_bootstrap_publishes_only_discovered_allowlist_and_resolves_names(tmp_pa
             'dependencies': [{'server_name': 'demo', 'tool_name': 'approved_read', 'required': True}]}]}, tmp_path)
     with httpx.Client(base_url='http://127.0.0.1:3000', transport=httpx.MockTransport(handle)) as client:
         result = apply_bootstrap(client, body)
-    assert result == {'created': 3, 'published': 3, 'preserved_existing': 0}
+    assert result == {'created': 3, 'published': 0, 'drafts': 3, 'preserved_existing': 0, 'default_model_pending': True}
+    assert not any(path.endswith('/publish') for _,path,_ in requests)
     assert not any('/runs' in path or path.endswith('/test') or '/tools/call' in path for _, path, _ in requests)
+
+
+def test_bootstrap_new_model_and_skill_real_api_remain_unpublished(tmp_path):
+    from fastapi.testclient import TestClient
+    from aiopsstudio.main import create_app
+    from cryptography.fernet import Fernet
+    app=create_app(database_url='sqlite:///'+str(tmp_path/'bootstrap-real.db'),master_key=Fernet.generate_key(),password='synthetic-bootstrap-password',public_origin='http://testserver',artifact_dir=tmp_path/'assets',enable_runtime=False,testing=True)
+    with TestClient(app) as client:
+        client.headers['Origin']='http://testserver'
+        assert client.post('/api/login',json={'password':'synthetic-bootstrap-password'}).status_code==200
+        body=validate_bootstrap({'version':1,'model_configs':[{'name':'bootstrap-model','provider':'openai','model':'synthetic','base_url':'https://model.example.invalid/v1'}],'default_model_name':'bootstrap-model','skills':[{'name':'bootstrap-skill','content':'合成方法'}]},tmp_path)
+        result=apply_bootstrap(client,body)
+        assert result=={'created':2,'published':0,'drafts':2,'preserved_existing':0,'default_model_pending':True}
+        for kind in ['model','skill']:
+            value=app.state.store.list(kind)[0]
+            assert value['current_version'] is None and value['versions']==[] and value['enabled'] is False

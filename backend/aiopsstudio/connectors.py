@@ -86,6 +86,18 @@ def tool_alias(server_id: str, name: str) -> str:
     return f"mcp_{stem}_{suffix}"
 
 
+def _check_tool_schema(item):
+    # A remote schema may describe data, never trigger remote $ref retrieval.
+    from .config import ConfigService
+    try:
+        for key in ("inputSchema", "outputSchema"):
+            if item.get(key) is not None:
+                Draft202012Validator.check_schema(item[key])
+                ConfigService._local_schema(item[key])
+    except Exception:
+        raise ConnectorError("工具目录包含无效或远程引用的 JSON Schema", "catalog_schema_invalid") from None
+
+
 def _tls(config: dict) -> ssl.SSLContext:
     if config.get("verify_tls") is False or config.get("tls_verify") is False:
         raise ConnectorError("不允许关闭 TLS 证书校验", "tls_required")
@@ -158,6 +170,7 @@ async def mcp_discover(config: dict, vault, request_observer=None) -> dict:
                 result = await session.list_tools(cursor=cursor)
                 for source in result.tools:
                     item = source.model_dump(mode="json", by_alias=True, exclude_none=True)
+                    _check_tool_schema(item)
                     if any(t["name"] == item["name"] for t in items):
                         raise ConnectorError("工具目录包含重复名称", "catalog_invalid")
                     item.update(alias=tool_alias(key, item["name"]), definition_digest=tool_digest(item))
@@ -192,9 +205,16 @@ async def mcp_call(config: dict, vault, tool_name: str, arguments: dict, request
     Draft202012Validator(frozen.get("inputSchema", {"type": "object"})).validate(arguments)
     async with _session(config, vault, request_observer) as (session, initialized):
         # A fresh connection must recheck remote definitions before dispatch.
-        cursor, found, seen = None, None, set()
+        cursor, found, seen, names = None, None, set(), set()
         for _ in range(50):
             listing = await session.list_tools(cursor=cursor)
+            for tool in listing.tools:
+                if tool.name in names:
+                    raise ConnectorError("工具目录包含重复名称，停止调用", "catalog_invalid")
+                names.add(tool.name)
+                _check_tool_schema(tool.model_dump(mode="json", by_alias=True))
+            if len(names) > 1000:
+                raise ConnectorError("工具目录超过平台上限，停止调用", "catalog_limit")
             found = next((t for t in listing.tools if t.name == tool_name), found)
             cursor = listing.nextCursor
             if not cursor:

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+from datetime import datetime, timedelta, timezone
+import secrets
 import hashlib
 import os
 from pathlib import Path
@@ -52,7 +54,7 @@ class AttachmentsService:
 
     def _conversation(self, id, owner_id):
         conversation = self.store.get("conversation", id)
-        if not conversation or resource_owner(conversation) != owner_id:
+        if not conversation or conversation.get("deleted_at") or resource_owner(conversation) != owner_id:
             raise HTTPException(404, "会话不存在")
         return conversation
 
@@ -64,7 +66,7 @@ class AttachmentsService:
 
     def require_owned(self, id, owner_id, conversation_id=None, *, allow_legacy_archive=False):
         record = self.store.get("attachment", id)
-        if not record or resource_owner(record) != owner_id or (conversation_id and record.get("conversation_id") != conversation_id):
+        if not record or record.get("deleted_at") or resource_owner(record) != owner_id or (conversation_id and record.get("conversation_id") != conversation_id):
             raise HTTPException(404, "附件不存在")
         self._conversation(record["conversation_id"], owner_id)
         self._authorize_report(record, owner_id, allow_legacy_archive=allow_legacy_archive)
@@ -74,7 +76,7 @@ class AttachmentsService:
         self._conversation(conversation_id, owner_id)
         visible = []
         for record in self.store.list("attachment"):
-            if resource_owner(record) != owner_id or record.get("conversation_id") != conversation_id:
+            if record.get("deleted_at") or resource_owner(record) != owner_id or record.get("conversation_id") != conversation_id:
                 continue
             try:
                 self._authorize_report(record, owner_id, allow_legacy_archive=True)
@@ -107,9 +109,94 @@ class AttachmentsService:
         except UnicodeDecodeError:
             return None
 
-    def _capacity(self, owner_id, additional):
-        current = sum(r.get("size", 0) for r in self.store.list("attachment") if resource_owner(r) == owner_id)
-        if current + additional > USER_LIMIT:
+    def _orphan_paths(self, owner_id):
+        directory = self._owner_dir(owner_id)
+        if directory.is_symlink() or directory.resolve().parent != self.root.resolve():
+            raise HTTPException(409, "附件存储目录不可回收")
+        known = {directory / (r["id"] + ".blob") for r in self.store.list("attachment") if resource_owner(r) == owner_id}
+        if not directory.is_dir():
+            return []
+        return sorted((path for path in directory.iterdir() if path not in known and not path.is_symlink() and path.is_file()
+                       and re.fullmatch(r"(?:[a-f0-9]{32}\.blob|\.write-[a-f0-9]{32})", path.name)), key=lambda path: path.name)
+
+    def usage(self, owner_id):
+        from .lifecycle import documents
+        records = list(documents(self.store, "attachment", owner_id=owner_id))
+        current = sum(r.get("size", 0) for r in records)
+        actual, missing = 0, 0
+        for record in records:
+            path = self._path(record)
+            if path.is_file():
+                actual += path.stat().st_size
+            else:
+                missing += 1
+        orphans = self._orphan_paths(owner_id)
+        orphan_bytes = sum(p.stat().st_size for p in orphans)
+        used = current + orphan_bytes
+        return {"used_bytes": used, "record_bytes": current, "actual_bytes": actual + orphan_bytes,
+                "quota_bytes": USER_LIMIT, "available_bytes": max(0, USER_LIMIT - used),
+                "file_count": len(records), "missing_files": missing, "orphan_file_count": len(orphans),
+                "orphan_bytes": orphan_bytes, "consistent": current == actual and not missing and not orphans}
+
+    def orphan_preview(self, owner_id):
+        def operation():
+            paths = self._orphan_paths(owner_id)
+            manifest = {p.name: {"bytes": p.stat().st_size, "mtime_ns": p.stat().st_mtime_ns} for p in paths}
+            token = secrets.token_urlsafe(32)
+            expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+            self.store.save("orphan_preview", hashlib.sha256(token.encode()).hexdigest(), {
+                "owner_id": owner_id, "manifest": manifest, "expires_at": expires, "consumed": False})
+            return {"preview_token": token, "expires_at": expires, "file_count": len(paths),
+                    "bytes": sum(v["bytes"] for v in manifest.values()), "notice": "仅回收此账号没有任何记录引用的附件临时文件。"}
+        return self.store.atomic(operation)
+
+    def cleanup_orphans(self, owner_id, payload):
+        token = payload.get("preview_token")
+        if not isinstance(token, str) or not 20 <= len(token) <= 200:
+            raise HTTPException(422, "回收需要有效预览 token")
+        key = hashlib.sha256(token.encode()).hexdigest()
+        def confirm():
+            ticket = self.store.get("orphan_preview", key)
+            if not ticket or ticket.get("owner_id") != owner_id:
+                raise HTTPException(404, "回收预览不存在")
+            if ticket.get("consumed"):
+                return ticket, True
+            if datetime.fromisoformat(ticket["expires_at"]) <= datetime.now(timezone.utc):
+                raise HTTPException(409, "回收预览已过期")
+            paths = self._orphan_paths(owner_id)
+            manifest = {p.name: {"bytes": p.stat().st_size, "mtime_ns": p.stat().st_mtime_ns} for p in paths}
+            if manifest != ticket["manifest"]:
+                raise HTTPException(409, "临时文件已变化，请重新预览")
+            ticket.update(consumed=True, cleanup_status="pending")
+            return self.store.save("orphan_preview", key, ticket, ticket["revision"]), False
+        ticket, repeated = self.store.atomic(confirm)
+        def cleanup():
+            latest = self.store.get("orphan_preview", key)
+            if latest.get("cleanup_status") == "complete":
+                return latest
+            orphans = {p.name: p for p in self._orphan_paths(owner_id)}
+            try:
+                for name, original in latest["manifest"].items():
+                    path = self._owner_dir(owner_id) / name
+                    if not path.exists():
+                        continue
+                    if name not in orphans or path.stat().st_size != original["bytes"] or path.stat().st_mtime_ns != original["mtime_ns"]:
+                        raise HTTPException(409, "回收期间文件被引用或修改，已停止")
+                    path.unlink()
+                latest.update(cleanup_status="complete", error=None)
+            except (OSError, HTTPException):
+                latest.update(cleanup_status="pending", error={"code": "orphan_cleanup_pending", "detail": "临时文件回收未完成，可重试"})
+            return self.store.save("orphan_preview", key, latest, latest["revision"])
+        final = self.store.atomic(cleanup)
+        return {"already_deleted": repeated, "cleanup_status": final["cleanup_status"], "error": final.get("error")}
+
+    def _capacity(self, owner_id, additional, *, user_additional=None):
+        # Deleted material is inaccessible and no longer consumes the user
+        # allocation; still-pending physical reclamation remains in disk usage.
+        current = sum(r.get("size", 0) for r in self.store.list("attachment")
+                      if not r.get("deleted_at") and resource_owner(r) == owner_id)
+        current += sum(p.stat().st_size for p in self._orphan_paths(owner_id))
+        if current + (additional if user_additional is None else user_additional) > USER_LIMIT:
             raise HTTPException(413, "用户附件总量不能超过 100 MiB")
         settings = self.store.get("settings", "main") or {}
         used = sum(p.stat().st_size for p in self.artifact_dir.rglob("*") if p.is_file())
@@ -118,15 +205,49 @@ class AttachmentsService:
         if shutil.disk_usage(self.artifact_dir).free - additional < int(settings.get("min_free_bytes", 64 * 1024 * 1024)):
             raise HTTPException(507, "服务端剩余空间不足，未保存附件")
 
+    def _write_bytes(self, path, data):
+        temporary = path.parent / (".write-" + uuid.uuid4().hex)
+        try:
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            self.store.assert_execution()
+            # link creates the final name exclusively; readers cannot observe a
+            # partially written file and an existing blob is never overwritten.
+            os.link(temporary, path)
+            self.store.on_rollback(lambda: path.unlink(missing_ok=True))
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def _save(self, owner_id, conversation_id, name, media_type, data, *, kind="upload", run_id=None):
         def save():
             conversation = self._conversation(conversation_id, owner_id)
+            if kind == "upload" and conversation.get("archived"):
+                raise HTTPException(409, "归档会话须先恢复后上传附件")
             from .legacy_archive import deny_execution
             deny_execution(self.store, "conversation", conversation)
             self._authorize_report({"kind": kind, "run_id": run_id}, owner_id)
             if run_id:
                 previous = next((r for r in self.store.list("attachment") if r.get("kind") == kind and r.get("run_id") == run_id and resource_owner(r) == owner_id), None)
                 if previous:
+                    if previous.get("deleted_at"):
+                        raise HTTPException(410, "报告制品已删除，不能重新创建")
+                    if previous.get("size") != len(data) or previous.get("sha256") != hashlib.sha256(data).hexdigest():
+                        raise HTTPException(409, "原报告制品与当前报告不一致，不能覆盖")
+                    path = self._path(previous)
+                    if path.is_file():
+                        if path.stat().st_size != len(data) or hashlib.sha256(path.read_bytes()).hexdigest() != previous["sha256"]:
+                            raise HTTPException(410, "报告制品摘要不一致，不能覆盖")
+                    else:
+                        self._capacity(owner_id, len(data), user_additional=0)
+                        try:
+                            path.parent.mkdir(mode=0o700, exist_ok=True)
+                            self._write_bytes(path, data)
+                        except BaseException:
+                            path.unlink(missing_ok=True)
+                            raise
                     return self.public(previous)
             if len(data) > FILE_LIMIT:
                 raise HTTPException(413, "单个附件不能超过 5 MiB")
@@ -138,16 +259,12 @@ class AttachmentsService:
                 raise HTTPException(507, "附件存储目录不可用")
             path = directory / (id + ".blob")
             try:
-                descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(descriptor, "wb") as stream:
-                    stream.write(data)
-                    stream.flush()
-                    os.fsync(stream.fileno())
+                self._write_bytes(path, data)
                 text = self._text(data, name, media_type)
                 record = self.store.save("attachment", id, {"owner_id": owner_id, "conversation_id": conversation_id, "name": name,
                     "media_type": media_type, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(), "kind": kind, "run_id": run_id,
                     "extraction_status": "text" if text is not None else "not_extracted", "text_char_count": len(text) if text is not None else None,
-                    "notice": "用户材料，不是源系统证据；不会执行文件。" if kind == "upload" else "分析报告制品；覆盖限制与原轮次保持一致。"})
+                    "notice": "用户材料，不是源系统证据；不会执行文件。" if kind == "upload" else "分析报告制品；覆盖限制与原轮次保持一致。", "lifecycle_version": 2})
                 return self.public(record)
             except BaseException:
                 path.unlink(missing_ok=True)
@@ -225,6 +342,36 @@ def configure_attachments(app):
         if not isinstance(body, dict):
             raise HTTPException(422, "附件请求必须为 JSON 对象")
         return service.upload(actor_id(request), id, body)
+
+    @app.post("/api/attachments/orphans/deletion-preview")
+    async def orphan_preview(request: Request):
+        return service.orphan_preview(actor_id(request))
+
+    @app.post("/api/attachments/orphans/delete")
+    async def orphan_delete(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(422, "回收请求必须为 JSON 对象")
+        return service.cleanup_orphans(actor_id(request), body)
+
+    @app.get("/api/attachments/usage")
+    async def usage(request: Request):
+        return service.usage(actor_id(request))
+
+    @app.post("/api/attachments/{id}/deletion-preview")
+    async def deletion_preview(id: str, request: Request):
+        from .lifecycle import LifecycleService
+        return LifecycleService(app).preview("attachment", id, actor_id(request))
+
+    @app.post("/api/attachments/{id}/delete")
+    async def deletion(id: str, request: Request):
+        from .lifecycle import LifecycleService
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(422, "删除请求必须为 JSON 对象")
+        lifecycle = LifecycleService(app)
+        result = lifecycle.delete("attachment", id, actor_id(request), body)
+        return await lifecycle.finish_cleanup(result, body["preview_token"], actor_id(request))
 
     @app.get("/api/attachments/{id}")
     async def metadata(id: str, request: Request):

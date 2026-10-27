@@ -1,5 +1,21 @@
 # AIOpsStudio 实现协作合同
 
+## 当前增量：M2 集成工作台（开发分支）
+
+R05/#6、R06/#7、R08/#9、R09/#10 使用一个集成 PR、四份 OpenSpec 和分项验收，基线 `fa91b92`。本节描述本分支已经落盘的接口机制；未代表 M2 已合并、部署或通过真实业务/用户接受，原 Mac 配置、历史和附件不在本轮开发/故障验证写入范围。总边界见 [M2 实施契约](docs/design/M2集成实施契约.md)和[最新完整设计](docs/design/AIOpsStudio完整设计.md#25-m2-集成范围与后续边界)。
+
+- 新发布默认 formal 且要求 revision CAS；需要当前实现/suite/scorer 绑定的受控 R01 流水线证明，以及候选实际运行/必要基线运行的服务端合同评分。POST `/{skills,mcp-servers,model-configs}/{id}/quality` 只接受运行引用，GET 返回服务端评价；GET/POST `/quality/pipeline` 由管理员查看/执行固定回放，POST 仅接受 `{}`，不接受路径、分数或 pass。实验版本不切换 current，历史正式版本继续保留；未知/未执行不算质量通过。具体适用范围见四份 change。
+- 队列入队与概览统一使用 settings.queue_limit，降低上限只阻止超限新增，已排队任务保留。Skill 文本包校验后原子激活，references 有固定版本/路径/摘要；MCP 目录完整性、schema/定义/依赖变化与凭据在发布/回退时复核。源权限与出站始终沿用 M1 frozen/latest 约束。
+- POST `/conversations/{id}/messages` 追加顶层 `{mode?:analyze|explain|followup,parent_run_id?}`。省略兼容 analyze；explain/followup 选择同会话终态父轮且总是新建预算轮。explain 禁来源发现和工具、拒绝新附件，只解释仍获授权的保存结果；followup 可补查。普通归档/已删除会话禁止新分析；显式 legacy_archive 保持原只读契约。
+- GET `/conversations?search=&archived=false&status=&start=&end=&limit=&cursor=` 返回 `{items,next_cursor}`，limit 为1–100；搜索/owner/状态/时间/归档/删除由 SQL 过滤，稳定 created_at/id 游标绑定筛选范围及首批上界。POST `/{id}/archive` `{archived,expected_revision}`；GET `/{id}/export` 返回有界 JSON 与授权附件字节。显式旧档案可查看/下载/导出，修改返回409 `legacy_archive_readonly`。
+- 会话和附件 POST `/{id}/deletion-preview` 返回 `{preview_token,expires_at,counts,blocked,reasons,notice}`，POST `/{id}/delete` `{preview_token}` 确认；令牌绑定 owner/revision/引用并在确认时复核。运行中或保留报告引用阻止删除；先提交最小 tombstone，再清当前对象文件/精确检查点，失败可按原令牌幂等重试。已删除材料的详情/旧下载入口拒绝。
+- GET `/attachments/usage` 返回元数据/实际/孤立字节和缺件对账；POST `/attachments/orphans/deletion-preview` 与 `/orphans/delete` 仅处理当前 owner 固定命名且无元数据的文件，写入与回收共用事务。普通附件5MiB/用户100MiB及部署全局配额继续适用。
+- GET `/runs/{id}/usage` 必须先用 `runtime.require_owned` 取已授权私有运行，再仅输出用量投影；已知累计量与未知 token 分开，无完整用量/版本化价格返回 `estimate:null`，缓存只计一次，供应商内部重试保持未知。POST `/runs/{id}/repair-report` 只重存原报告附件并修复关联，不调模型/来源，返回 `{delivery_status,report_attachment,error}`。
+- Store 的执行 scope 绑定 run/owner/generation/到期时间，数据库/事件在事务入口与 COMMIT 前 fencing，新文件以临时文件发布并登记回滚；PG checkpointer 共用 advisory lock 和代次验证。旧 worker 失效后拒绝后写；中断明确终结并保留用量，显式重试新建关联轮，不自动重放 running 图。
+- 离线备份固定应用表/PG 检查点、制品字节摘要与版本引用，主密钥独立提供；拒绝活跃任务、缺件/摘要/密钥错误及非空或源目标重叠的恢复。恢复丢弃旧 session/租约，设置 `restore_guard`。未核对备份外最新授权/撤销事实前，除 login/session/logout/只含核对标记的 `/restore-status`，工作空间 API 全部503 `restore_unverified`，保留期清理暂停。
+
+四份 change：`complete-management-acceptance`、`improve-long-running-chat`、`manage-history-attachment-lifecycle`、`verify-execution-recovery`。M2 不包含工单接入、变更分析、Hypothesis/Verdict、告警 Webhook/Case/共享、完整断电或高可用验收；这些按 R10–R13 或候选项另交付。下方保留 M1 与首版合同，M2 同名行为以本节为准。
+
 ## 当前增量：M1 可信分析与数据边界
 
 - 正式源工具成功和错误返回先按既有 `source_evidence` 结构投影为单条 ledger entry，补读使用 `reading` 规则；原始证据保持，禁止用通用协议文本绕过来源字段权限。
@@ -19,7 +35,7 @@
 - 报告保存 `grounding`、稳定 fact/claim 与 report_version。数值、单位、范围、对象、片段及冻结评估规则由程序核对；`verified` 只表示结构字段核对，模型措辞独立标未核验。拓扑潜在影响、观测异常、反证、未知、候选分开；不确认根因/恢复。
 - 出站类型逐字段投影；未知字段/类型、已知撤销前后凭据、未绑定参数均拒绝。会话别名映射仅服务端；实际 HTTP 验证组合提示对应最新策略 digest，不能以旧批准 hash 绕过收紧。HTTP transport 错误只保存固定公开文案，不把连接异常原文当业务证据。
 - 新模块：`analysis_context.py`、`access_policy.py`、`material_reading.py`、`grounded_reporting.py`、`runtime_trust.py`、`trust_api.py`、`evaluation/`。connector 的 `request_observer` 是同步、每次实际 HTTP 前的授权/计量回调；生产不得降级绕过。
-- 评估从固定旧代码运行真实 FastAPI/Deep Agents 入口，参考答案和 Agent 输入进程分离；保留首次失败、重试、未知分母及同冻结输入比较。R05 正式发布门禁、R06 完整流程/费用、R08/R09 生命周期/恢复、Case 与人工裁决继续后续工作包。
+- 评估从固定旧代码运行真实 FastAPI/Deep Agents 入口，参考答案和 Agent 输入进程分离；保留首次失败、重试、未知分母及同冻结输入比较。R05/R06/R08/R09 已进入上方 M2 集成开发与分项验收，Case 与人工裁决分别留 R13/R12。
 
 ## 历史基础：Chat 运维工作台与用户历史
 
@@ -39,7 +55,7 @@ OpenSpec change：`chat-workbench-user-history`，规格与设计位于 `openspe
 
 ---
 
-设计入口：[完整设计](docs/design/AIOpsStudio完整设计.md)（2026-10-23 整合，区分当前实现与后续目标）；原 v0.5 总体及管理文档保留为来源。当前 API 契约以本合同、主规格和源码为准。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
+设计入口：[完整设计](docs/design/AIOpsStudio完整设计.md)（2026-10-27 同步 M2 分支，区分原实例、待验收实现与后续目标）；原 v0.5 总体及管理文档保留为来源。当前 API 契约以本合同、主规格和源码为准。产品语言 zh-CN；Python FastAPI + PostgreSQL，React/Vite + CopilotKit，Node 同源入口。源码目录为本目录；外部接入参数和私有运行资料不随公共仓库收录。首版真实数据接入，任何测试数据单独标记。
 
 部署边界：应用、PostgreSQL、执行器与测试面向 Mac 本机；外部 CMDB、可观测和告警接口只读接入。端口、状态目录、数据库、可选 SSH 转发以及引导源配置均由部署者在仓库外提供，默认不启用转发。后续模型验证优先 MiniMax，不把历史模型结果改称为新模型验证。
 

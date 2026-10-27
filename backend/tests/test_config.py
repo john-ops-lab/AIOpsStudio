@@ -7,6 +7,7 @@ import pytest
 from aiopsstudio.config import ConfigService, Vault, ConfigError, redact
 from aiopsstudio.main import create_app
 from aiopsstudio.store import Store, StoreConflict
+from m2_management_fixtures import publish_with_quality
 
 SKILL = {"name": "cmdb-query", "display_name": "CMDB 查询", "description": "查真实 CMDB", "content": "---\nname: cmdb-query\ndescription: 只读查询 CMDB\n---\n先确认目标，再引用证据。", "references": {}, "input_schema": {"type": "object"}, "dependencies": []}
 
@@ -22,19 +23,19 @@ def service(store, tmp_path):
 
 def test_revision_conflict_and_immutable_publication(service):
     draft = service.save("skill", SKILL)
-    first = service.publish("skill", draft["id"], draft["revision"])
+    first = publish_with_quality(service, "skill", draft)
     first_version = copy.deepcopy(first["versions"][0])
     revised = service.save("skill", {"expected_revision": first["revision"], "content": SKILL["content"] + "\n新方法。"}, first["id"])
     assert service.published(revised)["content"] == SKILL["content"]
     with pytest.raises(StoreConflict):
         service.save("skill", {"expected_revision": first["revision"], "content": "过期内容"}, first["id"])
-    second = service.publish("skill", revised["id"], revised["revision"])
+    second = publish_with_quality(service, "skill", revised)
     assert second["versions"][0] == first_version
     assert second["current_version"] != first_version["id"]
     reverted = service.rollback("skill", second["id"], first_version["id"])
     assert reverted["current_version"] == first_version["id"]
     assert service.published(reverted)["content"] == SKILL["content"]
-    assert len(service.store.list("audit")) == 5
+    assert [a["action"] for a in sorted(service.store.list("audit"), key=lambda a: a["created_at"])] == ["create", "quality_evaluate", "publish", "save", "quality_evaluate", "publish", "rollback"]
 
 def test_atomic_rolls_back_changes(service):
     def failing():
@@ -50,7 +51,7 @@ def test_secret_encrypted_references_and_revocation(service):
     draft = service.save("model", {"name": "模型", "model": "model-1", "secret_value": credential})
     assert credential not in json.dumps(service.store.get("secret", draft["secret_id"]))
     assert "secret_value" not in draft
-    published = service.publish("model", draft["id"], draft["revision"])
+    published = publish_with_quality(service, "model", draft)
     rotated = service.save("model", {"expected_revision": published["revision"], "secret_value": "rotated-private-value"}, draft["id"])
     assert service.published(rotated)["secret_id"] == draft["secret_id"]
     assert redact({"error": "Bearer " + credential, "secret_value": credential}, service.vault) == {"error": "Bearer [已脱敏]"}
@@ -197,7 +198,10 @@ def test_publish_and_enable_freezes_usable_mcp_state(service):
     draft = service.save("mcp", {"name": "服务", "url": "http://127.0.0.1:9000/mcp"})
     draft.update(discovery={"complete": True}, blocked=True, tools=[{"name": "read", "inputSchema": {"type": "object"}, "alias": "m_read", "readonly": True}], allowed_tools=["read"])
     draft = service.store.save("mcp", draft["id"], draft)
-    published = service.publish("mcp", draft["id"], draft["revision"])
+    with pytest.raises(ConfigError, match="阻止"):
+        service.publish("mcp", draft["id"], draft["revision"])
+    draft = service.state("mcp", draft["id"], {"enabled": False, "blocked": False, "expected_revision": draft["revision"]})
+    published = publish_with_quality(service, "mcp", draft)
     fixed = service.published(published)
     assert published["enabled"] and not published["blocked"]
     assert fixed["enabled"] and not fixed["blocked"]

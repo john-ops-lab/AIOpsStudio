@@ -3,11 +3,11 @@ import { ArrowUp, FileUp, LockKeyhole, Paperclip, Plus, Settings2, X } from "luc
 import type { Entity } from "../../types";
 import { Button } from "../ui";
 import { sizeLabel } from "./context";
-export default function Composer({ value, onChange, onSend, busy, uploading, attachments, selectedAttachments, onRemoveAttachment, onUpload, onContext, onTools, models, modelId, onModel, skillName, active, error }: {
+export default function Composer({ value, onChange, onSend, busy, uploading, attachments, selectedAttachments, onRemoveAttachment, onUpload, onContext, onTools, models, modelId, onModel, skillName, active, error, mode, onMode, canExplain }: {
   value: string; onChange: (v: string) => void; onSend: () => void; busy: boolean; uploading: string;
   attachments: Entity[]; selectedAttachments: string[]; onRemoveAttachment: (id: string) => void;
   onUpload: (files: File[]) => void; onContext: () => void; onTools: () => void;
-  models: Entity[]; modelId: string; onModel: (id: string) => void; skillName?: string; active: boolean; error?: string;
+  models: Entity[]; modelId: string; onModel: (id: string) => void; skillName?: string; active: boolean; error?: string; mode: string; onMode: (mode: string) => void; canExplain: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return <div className="composer-wrap">
@@ -33,12 +33,13 @@ export default function Composer({ value, onChange, onSend, busy, uploading, att
       <div className="composer-bottom">
         <div className="composer-options">
           <select aria-label="选择分析模型" value={modelId} onChange={(e) => onModel(e.target.value)}><option value="">默认模型</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name || m.model}</option>)}</select>
+          <select aria-label="本次消息操作" value={mode} onChange={(e) => onMode(e.target.value)}><option value="analyze">分析或补充</option><option value="explain" disabled={!canExplain}>解释已有结果</option><option value="followup" disabled={!canExplain}>补查新证据</option></select>
           <span className="readonly-label"><LockKeyhole size={13} aria-hidden="true" />只读分析</span>
         </div>
         <Button variant="primary" type="submit" busy={busy} disabled={!value.trim() || Boolean(uploading)} aria-label="发送分析消息">发送<ArrowUp size={16} aria-hidden="true" /></Button>
       </div>
       <p id="composer-error" className="composer-error" role={error ? "alert" : undefined}>{error || ""}</p>
     </form>
-    <p className="composer-hint" id="composer-hint">{active ? "同上下文的补充进入当前轮；上下文改变时开启新轮。" : "继续追问将开启新一轮分析，保留现有报告与证据。"}<span>⌘ / Ctrl + Enter 发送</span></p>
+    <p className="composer-hint" id="composer-hint">{mode === "explain" ? "仅解释已有结果，不查询源系统；原报告保留。" : mode === "followup" ? "补查会开启关联新轮，使用独立预算，原报告保留。" : active ? "同上下文的补充进入当前轮；上下文改变时开启新轮。" : "继续追问将开启新一轮分析，保留现有报告与证据。"}<span>⌘ / Ctrl + Enter 发送</span></p>
   </div>;
 }
